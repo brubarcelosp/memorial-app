@@ -2,26 +2,21 @@
 !pip install python-docx bs4 lxml ipywidgets num2words pandas openpyxl pyproj --quiet
 
 # ===================== Imports =====================
-import os
-import re
-import io
-import math
-from io import BytesIO
-from pathlib import Path
-from datetime import datetime
-
+from IPython.display import display
+import ipywidgets as widgets
+import re, os, io, time, math
 from bs4 import BeautifulSoup
 from docx import Document
 from docx.shared import Pt, RGBColor, Inches, Cm
 from docx.enum.text import WD_PARAGRAPH_ALIGNMENT, WD_COLOR_INDEX, WD_LINE_SPACING
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
+from google.colab import files, drive
+from pathlib import Path
 from num2words import num2words
-import pandas as pd
-from pyproj import CRS, Transformer
-from openpyxl import Workbook, load_workbook
-from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
-from openpyxl.utils import get_column_letter
+import pandas as pd  # (novo p/ Excel)
+from pyproj import CRS, Transformer  # (novo p/ conversões)
+from datetime import datetime
 
 # ===================== Google Drive / Imagens =====================
 drive.mount('/content/drive', force_remount=True)
