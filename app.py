@@ -1,174 +1,239 @@
 import streamlit as st
-from io import BytesIO
-from typing import Dict
-from memorial_core import (
-    gerar_memorial_memorial,
-    gerar_memorial_resumo,
-    gerar_solicitacao_analise,
-)
+from memorial_core import generate_docx, generate_excel
 
 st.set_page_config(
-    page_title="Gerador de Memorial - Sólido Design Urbano",
+    page_title="Gerador de Memorial - Sólido",
     layout="wide"
 )
 
-st.title("Gerador de Memorial – Sólido Design Urbano")
+st.title("Gerador de Memorial (Streamlit)")
+st.caption("Versão web equivalente ao notebook do Colab, com os mesmos tipos, campos e lógicas.")
 
-TIPOS = {
-    "Memorial Condomínio": "condominio",
-    "Memorial Loteamento": "loteamento",
-    "Memorial Unificação": "unificacao",
-    "Memorial Desmembramento": "desmembramento",
-    "Memorial Unificação e Desmembramento": "unif_desm",
-    "Memorial Resumo": "memorial_resumo",
-    "Solicitação de Análise": "solicitacao_analise",
-}
+# ===================== LOGOS =====================
 
-tipo_label = st.selectbox("Tipo de documento", list(TIPOS.keys()))
-tipo = TIPOS[tipo_label]
+with st.expander("Configuração de logos (opcional)"):
+    header_logo_file = st.file_uploader("Logo de cabeçalho", type=["png", "jpg", "jpeg"], key="header_logo")
+    footer_logo_file = st.file_uploader("Logo de rodapé", type=["png", "jpg", "jpeg"], key="footer_logo")
+    watermark_logo_file = st.file_uploader("Marca d'água/canto", type=["png", "jpg", "jpeg"], key="watermark_logo")
 
-def multi_file_uploader(label: str, types=None) -> Dict[str, bytes]:
-    uploaded = st.file_uploader(label, type=types, accept_multiple_files=True)
-    files: Dict[str, bytes] = {}
-    if uploaded:
-        for f in uploaded:
-            files[f.name] = f.read()
-    return files
+header_logo = header_logo_file.read() if header_logo_file else None
+footer_logo = footer_logo_file.read() if footer_logo_file else None
+watermark_logo = watermark_logo_file.read() if watermark_logo_file else None
 
-st.markdown("### Dados básicos do empreendimento")
+# ===================== TIPO =====================
+
+TIPOS = [
+    "Memorial Condomínio",
+    "Memorial Loteamento",
+    "Memorial Unificação",
+    "Memorial Desmembramento",
+    "Memorial Unificação e Desmembramento",
+    "Memorial Resumo",
+    "Solicitação de Análise",
+]
+
+tipo = st.selectbox("Tipo de DOCX:", TIPOS)
+
+st.markdown("---")
+
+# ===================== CAMPOS BÁSICOS =====================
 
 col1, col2 = st.columns(2)
+
 with col1:
-    nome = st.text_input("Nome do empreendimento")
-    endereco = st.text_input("Endereço (com número ou s/nº)")
-    bairro = st.text_input("Bairro")
-    cidade = st.text_input("Cidade/UF (ex.: Porto Alegre/RS)")
-    matricula = st.text_input("Matrícula(s) do imóvel")
+    nome_emp = st.text_input("Empreendimento:", placeholder="Ex.: Golden View")
+    endereco_emp = st.text_input("Endereço:", placeholder="Av. Principal, 123")
+    bairro_emp = st.text_input("Bairro:", placeholder="Centro")
 with col2:
-    area_total = st.text_input("Área total da gleba (m²)")
-    perimetro = st.text_input("Perímetro (m)")
-    num_lotes = st.text_input("Número de lotes")
-    coord_fmt = st.selectbox(
-        "Formato das coordenadas",
-        options=[("UTM", "utm"), ("Graus decimais", "dec"), ("Graus-min-seg", "dms")],
-        format_func=lambda x: x[0],
-    )[1]
+    cidade_emp = st.text_input("Cidade (Cidade/UF):", placeholder="Portão/RS")
+    area_total_emp = st.text_input("Área total da gleba (m²):", placeholder="123456,78")
+    matricula_emp = st.text_input("Matrícula(s):", placeholder="17.051, 17.052, 17.053")
 
-st.markdown("---")
+# ===================== CAMPOS ESPECÍFICOS POR TIPO =====================
 
-extra = {}
+perimetro_emp = ""
+num_lotes_emp = 0
+coord_fmt = "utm"
+ane_drop = "Não"
+ane_largura = ""
+area_tot_priv_emp = ""
+area_tot_cond_emp = ""
+tipo_proj_resumo = "loteamento"
+usos_multi = []
+topografia = "Acentuada"
+has_ai = False
+has_restricao = False
 
-# Opções específicas para loteamento/condomínio
-if tipo in ("condominio", "loteamento"):
-    st.markdown("#### Opções específicas")
+if tipo in ("Memorial Condomínio", "Memorial Loteamento"):
     c1, c2 = st.columns(2)
     with c1:
-        ane = st.selectbox("Área não edificante na testada?", ["Não", "Sim"])
+        num_lotes_emp = st.number_input("Nº de lotes:", min_value=0, step=1)
+        perimetro_emp = st.text_input("Perímetro da gleba (m):", placeholder="3456,78")
     with c2:
-        ane_largura = st.text_input("Largura área não edificante (m)", value="")
-    extra["ane_enable"] = (ane == "Sim")
-    extra["ane_largura"] = ane_largura or ""
+        coord_fmt = st.selectbox("Formato das coordenadas:",
+                                 ["utm", "dec", "dms"],
+                                 format_func=lambda v: {
+                                     "utm": "UTM (SIRGAS 2000)",
+                                     "dec": "Graus decimais",
+                                     "dms": "Graus, minutos e segundos"
+                                 }[v])
+        ane_drop = st.selectbox("Possui área não edificante (faixa)?", ["Não", "Sim"])
+        if ane_drop == "Sim":
+            ane_largura = st.text_input("Largura da faixa não edificante (m):", "3,00")
 
-    if tipo == "condominio":
+    if tipo == "Memorial Condomínio":
         c3, c4 = st.columns(2)
         with c3:
-            area_priv = st.text_input("Área total privativa (m²)")
+            area_tot_priv_emp = st.text_input("Área total privativa (m²):", "")
         with c4:
-            area_cond = st.text_input("Área total condominial (m²)")
-        extra["area_priv"] = area_priv
-        extra["area_cond"] = area_cond
+            area_tot_cond_emp = st.text_input("Área total condominial (m²):", "")
 
-# Memorial Resumo
-if tipo == "memorial_resumo":
-    st.markdown("#### Parâmetros específicos do Memorial Resumo")
+elif tipo in ("Memorial Unificação", "Memorial Desmembramento", "Memorial Unificação e Desmembramento"):
     c1, c2 = st.columns(2)
     with c1:
-        tipo_proj = st.selectbox(
-            "Tipo de empreendimento",
-            ["Condomínio", "Loteamento"],
-        )
-        usos = st.multiselect(
-            "Usos do empreendimento",
-            ["Residencial", "Comercial", "Industrial"],
-            default=["Residencial"],
-        )
-        topografia = st.selectbox("Topografia", ["Acentuada", "Plana"])
+        perimetro_emp = st.text_input("Perímetro (opcional):", "")
     with c2:
+        coord_fmt = st.selectbox("Formato das coordenadas:",
+                                 ["utm", "dec", "dms"],
+                                 format_func=lambda v: {
+                                     "utm": "UTM (SIRGAS 2000)",
+                                     "dec": "Graus decimais",
+                                     "dms": "Graus, minutos e segundos"
+                                 }[v])
+
+elif tipo == "Memorial Resumo":
+    c1, c2 = st.columns(2)
+    with c1:
+        tipo_proj_resumo = st.selectbox(
+            "Tipo de empreendimento:",
+            ["loteamento", "condominio"],
+            format_func=lambda v: "Loteamento" if v == "loteamento" else "Condomínio"
+        )
+        usos_multi = st.multiselect(
+            "Usos do empreendimento:",
+            ["Residencial", "Comercial", "Serviços", "Industrial"],
+            default=["Residencial"]
+        )
+    with c2:
+        topografia = st.selectbox("Topografia da gleba:", ["Acentuada", "Plana"])
         has_ai = st.checkbox("Possui área institucional?")
         has_restricao = st.checkbox("Possui área de restrição?")
-    extra.update(
-        tipo_proj_resumo="condominio" if tipo_proj == "Condomínio" else "loteamento",
-        usos_multi=usos,
-        topografia=topografia,
-        has_ai=has_ai,
-        has_restricao=has_restricao,
+        num_lotes_emp = st.number_input("Nº de lotes (informativo):", min_value=0, step=1)
+
+elif tipo == "Solicitação de Análise":
+    tipo_proj_resumo = st.selectbox(
+        "Tipo de empreendimento:",
+        ["loteamento", "condominio"],
+        format_func=lambda v: "Loteamento" if v == "loteamento" else "Condomínio"
     )
 
-# Solicitação de Análise
-if tipo == "solicitacao_analise":
-    st.markdown("#### Tipo de empreendimento para o ofício")
-    tipo_proj_sol = st.selectbox(
-        "Tipo",
-        ["Condomínio fechado de lotes", "Loteamento de acesso controlado"],
-    )
-    extra["tipo_proj_resumo"] = (
-        "condominio" if "Condomínio" in tipo_proj_sol else "loteamento"
-    )
+# ===================== UPLOAD DE ARQUIVOS =====================
 
-# UNIF / DESM
-if tipo in ("unificacao", "desmembramento", "unif_desm"):
-    st.markdown("#### Arquivos para UNIFICAÇÃO / DESMEMBRAMENTO")
+uploaded_files_dict = {}
+
+if tipo in (
+    "Memorial Condomínio",
+    "Memorial Loteamento",
+    "Memorial Unificação",
+    "Memorial Desmembramento",
+    "Memorial Unificação e Desmembramento",
+):
+    st.markdown("### Arquivos de apoio (HTML/TXT)")
     st.write(
-        "- Para UNIFICAÇÃO: anexe o CivilReport HTML contendo o polígono da unificação.\n"
-        "- Para DESMEMBRAMENTO: anexe os HTML/TXT das glebas gerados pelo Civil 3D."
+        "- HTML/TXT de quadras/lotes (Parcel Report)\n"
+        "- CivilReport para áreas gerais (viário, APP, verde, etc.)\n"
+        "Use exatamente como no Colab."
     )
+    up_files = st.file_uploader(
+        "Anexar arquivos",
+        type=["html", "htm", "txt"],
+        accept_multiple_files=True
+    )
+    for f in up_files or []:
+        uploaded_files_dict[f.name] = f.read()
 
-# Uploads
-if tipo in ("condominio", "loteamento"):
-    st.markdown("#### Arquivos de lotes / quadras (HTML/TXT do Civil 3D)")
-    st.write("Anexe os arquivos exportados do Civil 3D com os lotes/quadras.")
-    uploaded = multi_file_uploader("Arquivos HTML/TXT", ["html", "htm", "txt"])
-elif tipo in ("unificacao", "desmembramento", "unif_desm"):
-    uploaded = multi_file_uploader(
-        "Arquivos HTML/TXT (CivilReport + glebas)", ["html", "htm", "txt"]
-    )
-else:
-    uploaded = {}
+# ===================== MONTAGEM DO FORM =====================
+
+form = {
+    "nome_emp": nome_emp,
+    "endereco_emp": endereco_emp,
+    "bairro_emp": bairro_emp,
+    "cidade_emp": cidade_emp,
+    "area_total_emp": area_total_emp,
+    "perimetro_emp": perimetro_emp,
+    "matricula_emp": matricula_emp,
+    "num_lotes_emp": num_lotes_emp,
+    "coord_fmt": coord_fmt,
+    "ane_drop": ane_drop,
+    "ane_largura": ane_largura,
+    "area_tot_priv_emp": area_tot_priv_emp,
+    "area_tot_cond_emp": area_tot_cond_emp,
+    "tipo_proj_resumo": tipo_proj_resumo,
+    "usos_multi": usos_multi,
+    "topografia": topografia,
+    "has_ai": has_ai,
+    "has_restricao": has_restricao,
+}
+
+if "quadro_frac_ideal" not in st.session_state:
+    st.session_state.quadro_frac_ideal = None
 
 st.markdown("---")
+b1, b2 = st.columns(2)
 
-if st.button("Gerar documento"):
-    if not nome or not cidade:
-        st.error("Preencha pelo menos o Nome do empreendimento e Cidade/UF.")
+# ===================== GERAR DOCX =====================
+
+with b1:
+    if st.button("Gerar DOCX"):
+        try:
+            doc_bytes, filename, meta = generate_docx(
+                tipo,
+                form,
+                uploaded_files_dict,
+                header_logo=header_logo,
+                footer_logo=footer_logo,
+                watermark_logo=watermark_logo
+            )
+
+            # guarda quadro para Excel quando for condomínio
+            st.session_state.quadro_frac_ideal = meta if meta else None
+
+            st.success(f"DOCX gerado com sucesso: {filename}")
+            st.download_button(
+                "Baixar DOCX",
+                data=doc_bytes,
+                file_name=filename,
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            )
+        except Exception as e:
+            st.error(f"Erro ao gerar DOCX: {e}")
+
+# ===================== GERAR EXCEL =====================
+
+with b2:
+    show_excel_btn = tipo in (
+        "Memorial Condomínio",
+        "Memorial Unificação",
+        "Memorial Desmembramento",
+        "Memorial Unificação e Desmembramento",
+    )
+    if show_excel_btn:
+        if st.button("Gerar Excel"):
+            try:
+                excel_bytes, xlsx_name = generate_excel(
+                    tipo,
+                    form,
+                    uploaded_files_dict,
+                    quadro_frac_ideal=st.session_state.quadro_frac_ideal
+                )
+                st.success(f"Excel gerado: {xlsx_name}")
+                st.download_button(
+                    "Baixar Excel",
+                    data=excel_bytes,
+                    file_name=xlsx_name,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+            except Exception as e:
+                st.error(f"Erro ao gerar Excel: {e}")
     else:
-        form = dict(
-            tipo=tipo,
-            nome=nome,
-            endereco=endereco,
-            bairro=bairro,
-            cidade=cidade,
-            matricula=matricula,
-            area_total=area_total,
-            perimetro=perimetro,
-            num_lotes=num_lotes,
-            coord_fmt=coord_fmt,
-        )
-        form.update(extra)
-
-        if tipo in ("condominio", "loteamento", "unificacao", "desmembramento", "unif_desm"):
-            docx_bytes, filename = gerar_memorial_memorial(form, uploaded)
-        elif tipo == "memorial_resumo":
-            docx_bytes, filename = gerar_memorial_resumo(form)
-        elif tipo == "solicitacao_analise":
-            docx_bytes, filename = gerar_solicitacao_analise(form)
-        else:
-            st.error("Tipo não suportado.")
-            st.stop()
-
-        st.success(f"Documento gerado: {filename}")
-        st.download_button(
-            "Baixar DOCX",
-            data=docx_bytes,
-            file_name=filename,
-            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        )
+        st.write(" ")
