@@ -67,7 +67,7 @@ def area_por_extenso(v):
 def hectares_from_m2(v):
     return float(v or 0) / 10000.0
 
-# ===================== FORMATOS DE NOME / CIDADE =====================
+# ===================== FORMATOS NOME / CIDADE =====================
 
 _PREP_MIN = {"DE", "DA", "DO", "DAS", "DOS"}
 
@@ -372,7 +372,7 @@ def parse_parcels_from_html(html_bytes: bytes):
         seq += 1
     return parcels
 
-# ===================== HELPERS DOCX =====================
+# ===================== DOCX HELPERS =====================
 
 def _set_run_defaults(run, bold=False):
     run.font.name = 'Calibri'
@@ -476,20 +476,6 @@ def _enable_update_fields_on_open(doc):
     upd.set(qn('w:val'), 'true')
     settings_el.append(upd)
 
-def _remove_trailing_empty_paragraphs(doc):
-    def _para_has_field(p):
-        return bool(p._p.xpath('.//w:fldChar') or p._p.xpath('.//w:instrText'))
-    while doc.paragraphs:
-        last = doc.paragraphs[-1]
-        if not (last.text or '').strip() and not _para_has_field(last):
-            p = last._element
-            p.getparent().remove(p)
-            doc._body.clear_content()
-            for paragraph in doc.paragraphs:
-                doc._body._body.append(paragraph._element)
-        else:
-            break
-
 def _add_toc(doc):
     p = doc.add_paragraph()
     r = p.add_run()
@@ -527,7 +513,7 @@ def _join_com_e(lista):
         return lista[0]
     return ", ".join(lista[:-1]) + " e " + lista[-1]
 
-# ===================== TEXTOS FORMATADOS (LOTE/ÁREA) =====================
+# ===================== TEXTO SEGMENTOS / ÁREAS =====================
 
 def _propaga_vertices(first_point: dict, segments: list,
                       coord_fmt_str: str = 'utm',
@@ -568,7 +554,7 @@ def _propaga_vertices(first_point: dict, segments: list,
                 c1 = f"{lon:.6f}°".replace('.', ',')
                 c2 = f"{lat:.6f}°".replace('.', ',')
             else:
-                c1 = fmt_latlon_dms(lat=lat, lon=lon)  # simplificado
+                c1 = fmt_latlon_dms(lat, lon)
                 c2 = ""
 
         rows.append({
@@ -636,13 +622,9 @@ def adicionar_texto_formatado(doc, texto):
 
         i = m.end()
 
-# ===================== MEMORIAL RESUMO (COMPLETO) =====================
+# ===================== MEMORIAL RESUMO =====================
 
 def build_memorial_resumo_doc(form, header_logo=None, footer_logo=None, watermark_logo=None):
-    """
-    Versão portada do _build_memorial_resumo_doc do Colab,
-    usando dict `form` em vez de widgets.
-    """
     doc = preparar_doc(header_logo, footer_logo, watermark_logo)
     _enable_update_fields_on_open(doc)
 
@@ -654,7 +636,7 @@ def build_memorial_resumo_doc(form, header_logo=None, footer_logo=None, watermar
     is_cond = (form.get('tipo_proj_resumo','loteamento') == 'condominio')
     tipo_lbl = "Condomínio fechado de lotes" if is_cond else "Loteamento de acesso controlado"
 
-    # ===== CAPA =====
+    # CAPA
     p = doc.add_paragraph(); p.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
     r = p.add_run("MEMORIAL DESCRITIVO"); _set_run_defaults(r, bold=True); r.font.size = Pt(14)
 
@@ -671,18 +653,15 @@ def build_memorial_resumo_doc(form, header_logo=None, footer_logo=None, watermar
         _set_run_defaults(rr, bold=True); rr.italic = True; rr.font.size = Pt(14)
     r2b = p.add_run("”"); _set_run_defaults(r2b, bold=True); r2b.font.size = Pt(14)
 
-    # Sumário / TOC
+    # Sumário
     doc.add_paragraph()
     p = doc.add_paragraph(); p.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
     r = p.add_run("Sumário"); _set_run_defaults(r, bold=True); r.font.size = Pt(14)
     _add_toc(doc)
-    _remove_trailing_empty_paragraphs(doc)
 
-    # ===== PÁGINA 2+ =====
     idx = 1
 
-    # 1. INTRODUÇÃO
-    intro_idx = idx
+    # INTRODUÇÃO
     h_intro = _heading_num(doc, idx, "INTRODUÇÃO")
     h_intro.paragraph_format.page_break_before = True
     idx += 1
@@ -703,140 +682,95 @@ def build_memorial_resumo_doc(form, header_logo=None, footer_logo=None, watermar
     _set_run_defaults(p.add_run(
         f" é um empreendimento por unidades autônomas a construir, com finalidade {usos_txt.lower()}, "
         f"configurado como {modo_lbl} de acesso controlado, concebido para oferecer infraestrutura completa, "
-        "qualidade de vida, segurança e integração com o entorno urbano."
+        "qualidade de vida, segurança e integração com o entorno."
     ))
 
-    # 2. PROPRIETÁRIO/INCORPORADORA
-    prop_idx = idx
+    # PROPRIETÁRIO
     _heading_num(doc, idx, "PROPRIETÁRIO/INCORPORADORA"); idx += 1
     p = doc.add_paragraph(); p.alignment = WD_PARAGRAPH_ALIGNMENT.JUSTIFY
     _run_xxxx(p); _set_run_defaults(p.add_run(", inscrita no CNPJ sob o nº ")); _run_xxxx(p)
-    _set_run_defaults(p.add_run(", incorporadora da área de "))
-    if (form.get('area_total_emp','') or '').strip():
-        try:
-            v = _to_float_br(form.get('area_total_emp',''))
-            _set_run_defaults(p.add_run(_fmt_br(v, 2) + "m²"))
-        except Exception:
-            _run_xxxx(p); _set_run_defaults(p.add_run("m²"))
-    else:
-        _run_xxxx(p); _set_run_defaults(p.add_run("m²"))
-    mats_raw = (form.get('matricula_emp','') or '').strip()
-    if mats_raw:
-        parts = [x.strip() for x in re.split(r'\s*(?:,|;| e )\s*', mats_raw) if x.strip()]
-        if len(parts) == 1:
-            _set_run_defaults(p.add_run(" registrada na matrícula nº "))
-            _set_run_defaults(p.add_run(parts[0]))
-        else:
-            _set_run_defaults(p.add_run(" registradas nas Matrículas nº "))
-            _set_run_defaults(p.add_run(", ".join(parts[:-1]) + " e " + parts[-1]))
-    else:
-        _set_run_defaults(p.add_run(" registrada na matrícula nº ")); _run_xxxx(p)
-    _set_run_defaults(p.add_run(" do Registro de Imóveis competente."))
+    _set_run_defaults(p.add_run(
+        ", proprietária e/ou incorporadora da gleba destinada ao empreendimento."
+    ))
 
-    # 3. RESPONSÁVEL TÉCNICO
+    # RESPONSÁVEL TÉCNICO
     _heading_num(doc, idx, "RESPONSÁVEL TÉCNICO PELO PROJETO URBANÍSTICO"); idx += 1
     p = doc.add_paragraph(); p.alignment = WD_PARAGRAPH_ALIGNMENT.JUSTIFY
     _set_run_defaults(p.add_run(
-        "SOLIDO - DESIGN URBANO LTDA., registrada no CAU-RS 15335-4, "
-        "CNPJ nº 26.887.368/0001-07, responsável técnico pelo projeto urbanístico."
+        "SOLIDO - DESIGN URBANO LTDA., CNPJ nº 26.887.368/0001-07, CAU-RS 15335-4, "
+        "responsável técnico pelo projeto urbanístico."
     ))
 
-    # 4. A GLEBA
-    gleba_idx = idx
+    # GLEBA
     _heading_num(doc, idx, "A GLEBA"); idx += 1
     p = doc.add_paragraph(); p.alignment = WD_PARAGRAPH_ALIGNMENT.JUSTIFY
-    _set_run_defaults(p.add_run("A área para implantação do "))
-    r = p.add_run(tipo_lbl + " "); _set_run_defaults(r, bold=True)
-    p.add_run("“")
-    r = p.add_run(nome_fmt.strip() if (nome_fmt or "").strip() else "XXXX")
-    _set_run_defaults(r, bold=True); r.italic = True
-    if not (nome_fmt or "").strip():
-        r.font.highlight_color = WD_COLOR_INDEX.YELLOW
-    p.add_run("”")
-    _set_run_defaults(p.add_run(" é de "))
+    _set_run_defaults(p.add_run("A gleba destinada ao empreendimento possui área total de "))
     if (form.get('area_total_emp','') or '').strip():
         try:
             v = _to_float_br(form.get('area_total_emp',''))
             _set_run_defaults(p.add_run(_fmt_br(v, 2) + "m²"))
+            _set_run_defaults(p.add_run(f" ({area_por_extenso(v)}), "))
         except Exception:
-            _run_xxxx(p); _set_run_defaults(p.add_run("m²"))
+            _run_xxxx(p); _set_run_defaults(p.add_run("m², "))
     else:
-        _run_xxxx(p); _set_run_defaults(p.add_run("m²"))
+        _run_xxxx(p); _set_run_defaults(p.add_run("m², "))
     _set_run_defaults(p.add_run(
-        f", com frente à {end_fmt or 'XXXX'}, bairro {bai_fmt or 'XXXX'}, município de {cid_fmt or 'XXXX'}, "
-        "conforme levantamento planialtimétrico e matrículas indicadas."
+        f"localizada na {end_fmt or 'XXXX'}, bairro {bai_fmt or 'XXXX'}, município de {cid_fmt or 'XXXX'}, "
+        "conforme matrículas e levantamento anexos."
     ))
 
-    # 5. TOPOGRAFIA
-    topo_idx = idx
+    # TOPOGRAFIA
     _heading_num(doc, idx, "TOPOGRAFIA"); idx += 1
     p = doc.add_paragraph(); p.alignment = WD_PARAGRAPH_ALIGNMENT.JUSTIFY
     if form.get('topografia','Acentuada') == 'Acentuada':
-        txt = (
-            "A área apresenta topografia acentuada, com declividades variáveis e "
-            "desníveis significativos, exigindo soluções específicas de implantação, "
-            "contenção e drenagem, devidamente consideradas no projeto urbanístico."
-        )
+        _set_run_defaults(p.add_run(
+            "A área apresenta topografia acentuada, com declividades variadas, "
+            "exigindo soluções específicas de implantação viária e drenagem."
+        ))
     else:
-        txt = (
-            "A área apresenta topografia predominantemente plana, com variações suaves "
-            "e condições favoráveis à implantação do sistema viário e parcelamento proposto."
-        )
-    _set_run_defaults(p.add_run(txt))
+        _set_run_defaults(p.add_run(
+            "A área apresenta topografia predominantemente plana, "
+            "facilitando a implantação do sistema viário e parcelamento."
+        ))
 
-    # LOCALIZAÇÃO/AEROFOTO (marcador)
-    _add_centered(doc, "LOCALIZAÇÃO/AEROFOTO", bold=True)
-    p = doc.add_paragraph(); p.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
-    _add_hl(p, "(inserir imagem)")
-
-    # 6. ZONEAMENTO
-    zone_idx = idx
-    _heading_num(doc, idx, "ZONEAMENTO"); idx += 1
+    # ZONEAMENTO
+    _heading_num(doc, idx, "ZONEAMENTO E ENQUADRAMENTO"); idx += 1
     p = doc.add_paragraph(); p.alignment = WD_PARAGRAPH_ALIGNMENT.JUSTIFY
     _set_run_defaults(p.add_run(
-        f"{zone_idx}.1. A gleba se encontra inserida em zona urbana/expansão urbana, "
-        "conforme legislação municipal vigente, atendendo aos parâmetros urbanísticos aplicáveis "
-        "ao uso proposto."
+        "O empreendimento está enquadrado na legislação urbanística municipal vigente, "
+        "respeitando parâmetros de uso, ocupação, taxas, recuos e áreas obrigatórias."
     ))
 
-    # 7. DIRETRIZES DE PARCELAMENTO / SISTEMA VIÁRIO / ÁREAS
-    areas_idx = idx
+    # SÍNTESE DO PROJETO
     _heading_num(doc, idx, "SÍNTESE DO PROJETO URBANÍSTICO"); idx += 1
-
     p = doc.add_paragraph(); p.alignment = WD_PARAGRAPH_ALIGNMENT.JUSTIFY
     _set_run_defaults(p.add_run(
-        f"{areas_idx}.1. O projeto contempla a implantação de sistema viário hierarquizado, "
-        "lotes com dimensões compatíveis à legislação, áreas institucionais (quando exigidas), "
-        "áreas verdes, áreas de lazer e, no caso de condomínio, áreas de uso comum, "
-        "garantindo acessibilidade, segurança viária e integração paisagística."
+        "O projeto contempla sistema viário hierarquizado, lotes com dimensões compatíveis, "
+        "áreas verdes e de lazer, áreas institucionais quando exigidas, e, no caso de condomínio, "
+        "áreas condominiais de uso comum."
     ))
-
     if form.get('has_ai', False):
         p = doc.add_paragraph(); p.alignment = WD_PARAGRAPH_ALIGNMENT.JUSTIFY
         _set_run_defaults(p.add_run(
-            f"{areas_idx}.2. O empreendimento conta com área(s) institucional(is), "
-            "destinada(s) a equipamentos públicos comunitários, em atendimento às exigências legais."
+            "O empreendimento possui área(s) institucional(is), destinadas a equipamentos públicos "
+            "ou comunitários, em atendimento à legislação."
         ))
-
     if form.get('has_restricao', False):
         p = doc.add_paragraph(); p.alignment = WD_PARAGRAPH_ALIGNMENT.JUSTIFY
         _set_run_defaults(p.add_run(
-            f"{areas_idx}.3. O empreendimento possui área(s) de restrição, "
-            "definida(s) para preservação ambiental, faixas não edificantes, recuos especiais "
-            "ou condicionantes específicos dos órgãos competentes."
+            "Há áreas de restrição definidas para proteção ambiental, faixas não edificantes "
+            "ou condicionantes específicas, as quais constam nos desenhos anexos."
         ))
 
-    # 8. CONCLUSÃO
-    concl_idx = idx
+    # CONCLUSÃO
     _heading_num(doc, idx, "CONCLUSÃO"); idx += 1
     p = doc.add_paragraph(); p.alignment = WD_PARAGRAPH_ALIGNMENT.JUSTIFY
     _set_run_defaults(p.add_run(
-        "O presente Memorial Descritivo/Resumo tem por objetivo apresentar de forma sintética "
-        "as principais características do empreendimento, demonstrando sua conformidade com a "
-        "legislação urbanística vigente e subsidiando a análise técnica pelos órgãos competentes."
+        "O presente Memorial Resumo tem por objetivo apresentar a concepção geral do empreendimento, "
+        "comprovando sua adequação legal e fornecendo subsídios para análise técnica."
     ))
 
-    # Data + assinaturas
+    # Data e assinaturas
     doc.add_paragraph()
     p = doc.add_paragraph(); p.alignment = WD_PARAGRAPH_ALIGNMENT.RIGHT
     hoje = datetime.now()
@@ -865,7 +799,7 @@ def _sec_assinaturas_resumo(doc):
     p = doc.add_paragraph(); p.alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
     r = p.add_run("SOLIDO - DESIGN URBANO LTDA."); _set_run_defaults(r, bold=True)
     p = doc.add_paragraph()
-    r = p.add_run("CAU-RS 15335-4"); _set_run_defaults(r)
+    _set_run_defaults(p.add_run("CAU-RS 15335-4"))
 
 # ===================== SOLICITAÇÃO DE ANÁLISE =====================
 
@@ -892,6 +826,7 @@ def build_solicitacao_analise_doc(form, header_logo=None, footer_logo=None, wate
     _set_run_defaults(p.add_run(_pt_date("Porto Alegre")))
 
     cid_fmt = _fmt_cidade_slash_uf(form.get('cidade_emp','') or "")
+
     p = doc.add_paragraph(); p.alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
     _set_run_defaults(p.add_run("À"))
     p = doc.add_paragraph(); p.alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
@@ -908,7 +843,6 @@ def build_solicitacao_analise_doc(form, header_logo=None, footer_logo=None, wate
     bai_fmt = _fmt_bairro(form.get('bairro_emp',''))
     tipo_cond_raw = form.get('tipo_proj_resumo','loteamento')
     tipo_cond_txt = "Loteamento de acesso controlado" if tipo_cond_raw == 'loteamento' else "Condomínio fechado de lotes"
-
     mats_t, mats_fmt = _fmt_matriculas_plural(form.get('matricula_emp',''))
 
     if (form.get('area_total_emp','') or '').strip():
@@ -924,11 +858,11 @@ def build_solicitacao_analise_doc(form, header_logo=None, footer_logo=None, wate
     r = par.add_run("SOLIDO - DESIGN URBANO LTDA., "); _set_run_defaults(r, bold=True)
     _set_run_defaults(par.add_run(
         "na qualidade de responsável técnico pelo projeto urbanístico, "
-        f"vem, por meio deste, requerer a análise técnica para implantação de um "
+        "vem, por meio deste, requerer a análise técnica para implantação de um "
     ))
     r = par.add_run(tipo_cond_txt); _set_run_defaults(r, bold=True)
     _set_run_defaults(par.add_run(", inserido em gleba registrada sob "))
-    _set_run_defaults(par.add_run(f"{mats_t} nº {mats_fmt}")); 
+    _set_run_defaults(par.add_run(f"{mats_t} nº {mats_fmt}"))
     _set_run_defaults(par.add_run(
         f", com área total de "
     ))
@@ -942,7 +876,7 @@ def build_solicitacao_analise_doc(form, header_logo=None, footer_logo=None, wate
     for item in [
         "- Projeto urbanístico;",
         "- Memorial descritivo/resumo do empreendimento;",
-        "- Ofício ou requerimento padrão, se aplicável;",
+        "- Ofício/requerimento específico, se houver;",
         "- RRT/ART dos responsáveis."
     ]:
         li = doc.add_paragraph(); li.alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
@@ -974,20 +908,705 @@ def build_solicitacao_analise_doc(form, header_logo=None, footer_logo=None, wate
     filename = "URB-PL_XXXX_SOLICITAÇÃO DE ANÁLISE_RX-VX.docx"
     return bio, filename
 
-# ===================== UNIFICAÇÃO / DESMEMBRAMENTO / CONDOMÍNIO / LOTEAMENTO =====================
-# (Mesma lógica do Colab, portada: coleta CivilReport, gera textos por área/lote, etc.)
+# ===================== UNIFICAÇÃO / DESMEMBRAMENTO =====================
 
-# ... AQUI entram as funções:
-# - collect_items_unif_desm(...)
-# - generate_excel_unif_desm(...)
-# - build_unif_desm_doc(...)
-# - build_condominio_loteamento_doc(...)
-# - generate_excel_fracao_ideal(...)
-#
-# (mantendo exatamente as regras que já te enviei na versão anterior:
-#  classificação por tipo, textos de áreas, inclusão de fração ideal, etc.)
+def collect_items_unif_desm(modo, uploaded_files_dict):
+    items_unif = None
+    items_desm = []
 
-# Para fechar a orquestração:
+    civil_htmls = [
+        (f, d) for f, d in uploaded_files_dict.items()
+        if f.lower().endswith(('.html', '.htm')) and 'CIVILREPORT' in f.upper()
+    ]
+    other_htmls = [
+        (f, d) for f, d in uploaded_files_dict.items()
+        if f.lower().endswith(('.html', '.htm', '.txt')) and 'CIVILREPORT' not in f.upper()
+    ]
+
+    if modo in ('unificacao', 'unif_desm'):
+        for fname, data in civil_htmls:
+            arr = parse_civilreport_from_html(data)
+            for it in arr:
+                if is_unificacao_item_name(it.get('name') or ''):
+                    items_unif = it
+
+    if modo in ('desmembramento', 'unif_desm'):
+        for fname, data in other_htmls:
+            try:
+                if fname.lower().endswith(('.html', '.htm')):
+                    parcels = parse_parcels_from_html(data)
+                else:
+                    parcels = parse_parcels_from_txt(data)
+                for p in parcels:
+                    nm = f"GLEBA {p.get('num', 1)}"
+                    items_desm.append((nm, {
+                        'segments': p.get('segments', []),
+                        'area_m2': p.get('area_m2', 0.0),
+                        'first_point': p.get('first_point')
+                    }))
+            except Exception:
+                pass
+
+    return items_unif, items_desm
+
+def _texto_ane(largura_m):
+    num_sem = f"{_fmt_br(largura_m, 2)}m"
+    return (
+        f" Existe uma faixa não edificante com largura de {num_sem} "
+        f"({extenso_metros(largura_m)}), conforme definido no projeto urbanístico."
+    )
+
+def _format_first_point(fp, coord_fmt, zone_num, hemi):
+    if not fp:
+        return None
+    y = round(float(fp["Y"]), 2)
+    x = round(float(fp["X"]), 2)
+    if coord_fmt == 'utm':
+        return f"ponto de coordenadas Y= {_fmt_br(y, 2)}m e X= {_fmt_br(x, 2)}m"
+    lat, lon = utm_to_latlon(x, y, zone_num, hemi)
+    if coord_fmt == 'dec':
+        return f"ponto de coordenadas geográficas {fmt_latlon_decimal(lat, lon)}"
+    return f"ponto de coordenadas geográficas {fmt_latlon_dms(lat, lon)}"
+
+def _seg_texto_com_card(seg, dest_coord=None, tipo='line', coord_fmt='utm'):
+    az = seg.get("azimuth")
+    card = azimuth_to_card8(az)
+    az_dms = azimuth_to_dms_int(az)
+    dest_txt = ""
+    if dest_coord:
+        c1, c2 = dest_coord
+        if coord_fmt == 'utm':
+            dest_txt = f" até o ponto de coordenadas Y= {c2}m e X= {c1}m"
+        else:
+            dest_txt = f" até o ponto de coordenadas {c2} / {c1}"
+
+    if tipo == 'line':
+        lv = round(float(seg["length_m"]), 2)
+        length = _fmt_br(lv, 2) + "m"
+        return (
+            f"daí segue, por reta, sentido {card}, medindo {length} ({extenso_metros(lv)}), "
+            f"confrontando ao XXXX com XXXX{dest_txt}, seguindo por um azimute de {az_dms}; "
+        )
+
+    clv = round(float(seg["curve_len_m"]), 2)
+    rv = round(float(seg["radius_m"]), 2)
+    cl = _fmt_br(clv, 2) + "m"
+    r = _fmt_br(rv, 2) + "m"
+    return (
+        f"daí segue, por curva, sentido {card}, medindo {cl} ({extenso_metros(clv)}) e raio de {r} ({extenso_metros(rv)}), "
+        f"confrontando ao XXXX com XXXX{dest_txt}, seguindo por um azimute de {az_dms}; "
+    )
+
+def build_area_text(item_name, item, tipo_full, empreendimento, endereco, bairro, cidade,
+                    ane_enable=False, ane_largura_m=None, coord_fmt='utm', zone_num=22, hemi='S',
+                    ident_label_only=False, ident_label_text="Descrição do Imóvel:"):
+    nome_norm = _normalize(item_name)
+    area = item.get("area_m2") or 0
+    area_fmt = _fmt_br(area, 2) + "m²"
+    area_ext = area_por_extenso(area)
+
+    cabeca = ""
+    if ident_label_only:
+        cabeca = f"[[B]]{ident_label_text}[[/B]] Um terreno urbano, irregular, sem benfeitorias, "
+    else:
+        cabeca = f"[[B]]{nome_norm}[[/B]]: Um terreno urbano, irregular, sem benfeitorias, "
+
+    cabeca += (
+        f"localizado na {endereco}, no bairro {bairro}, na cidade de {cidade}, "
+        f"com área total de {area_fmt} ({area_ext}). "
+    )
+
+    if item.get("first_point"):
+        fp_txt = _format_first_point(item["first_point"], coord_fmt, zone_num, hemi)
+        if fp_txt:
+            cabeca += f"Inicia-se a descrição no {fp_txt}; "
+
+    rows = _propaga_vertices(
+        item.get("first_point"),
+        item.get("segments", []),
+        coord_fmt_str=coord_fmt,
+        zone_num=zone_num,
+        hemi=hemi
+    )
+
+    partes = []
+    segs = item.get("segments", []) or []
+    for i, seg in enumerate(segs):
+        dest = None
+        if i < len(rows):
+            dest = (rows[i]["COORD_1"], rows[i]["COORD_2"])
+        if seg["type"] == "line":
+            partes.append(_seg_texto_com_card(seg, dest_coord=dest, tipo='line', coord_fmt=coord_fmt))
+        else:
+            partes.append(_seg_texto_com_card(seg, dest_coord=dest, tipo='curve', coord_fmt=coord_fmt))
+
+    corpo = "".join(partes)
+    if corpo.endswith("; "):
+        corpo = corpo[:-2] + ", "
+
+    texto = cabeca + corpo + "chegando ao final da descrição do perímetro."
+    if ane_enable and ane_largura_m:
+        texto += _texto_ane(ane_largura_m)
+    return texto
+
+def build_memorial_text(parcel, quadra, tipo_full, empreendimento, endereco, bairro, cidade,
+                        ane_enable=False, ane_largura_m=None, eh_condominio=False,
+                        area_tot_priv=0.0, area_tot_cond=0.0, coord_fmt='utm', zone_num=22, hemi='S'):
+    num = parcel["num"]
+    area = parcel.get("area_m2") or 0
+
+    cabeca = f"LOTE {num} – {quadra}: Um terreno urbano, irregular, sem benfeitorias, "
+    cabeca += (
+        f"localizado na {endereco}, no bairro {bairro}, na cidade de {cidade}, "
+        f"constituído como LOTE {num} da {quadra}, "
+    )
+
+    if parcel.get("first_point"):
+        fp_txt = _format_first_point(parcel["first_point"], coord_fmt, zone_num, hemi)
+        if fp_txt:
+            cabeca += f"inicia-se a descrição no {fp_txt}; "
+
+    rows = _propaga_vertices(
+        parcel.get("first_point"),
+        parcel.get("segments", []),
+        coord_fmt_str=coord_fmt,
+        zone_num=zone_num,
+        hemi=hemi
+    )
+
+    partes = []
+    segs = parcel.get("segments", []) or []
+    for i, seg in enumerate(segs):
+        dest = None
+        if i < len(rows):
+            dest = (rows[i]["COORD_1"], rows[i]["COORD_2"])
+        if seg["type"] == "line":
+            partes.append(_seg_texto_com_card(seg, dest_coord=dest, tipo='line', coord_fmt=coord_fmt))
+        else:
+            partes.append(_seg_texto_com_card(seg, dest_coord=dest, tipo='curve', coord_fmt=coord_fmt))
+
+    corpo = "".join(partes)
+    if corpo.endswith("; "):
+        corpo = corpo[:-2] + ", "
+
+    texto = cabeca + corpo + "chegando ao final da descrição do perímetro."
+    if ane_enable and ane_largura_m:
+        texto += _texto_ane(ane_largura_m)
+
+    if eh_condominio and area and area_tot_priv:
+        fr = area / area_tot_priv
+        area_comum = fr * (area_tot_cond or 0.0)
+        area_total = area + area_comum
+        texto += (
+            f" Possui área real privativa de {_fmt_br(area, 2)}m², "
+            f"área de uso comum de {_fmt_br(area_comum, 2)}m², "
+            f"área real total de {_fmt_br(area_total, 2)}m², "
+            f"correspondendo-lhe a fração ideal de {fr:.7f}."
+        )
+
+    return texto
+
+def _sec_assinaturas_simples(doc):
+    _add_centered(doc, "ASSINATURAS", bold=True)
+    doc.add_paragraph(); doc.add_paragraph()
+    p = doc.add_paragraph(); p.alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
+    r = p.add_run("Responsável técnico"); _set_run_defaults(r, bold=True)
+    p = doc.add_paragraph()
+    r = p.add_run("SOLIDO - DESIGN URBANO LTDA."); _set_run_defaults(r)
+    p = doc.add_paragraph()
+    r = p.add_run("CAU-RS 15335-4"); _set_run_defaults(r)
+
+def build_unif_desm_doc(modo, form, uploaded_files_dict,
+                        header_logo=None, footer_logo=None, watermark_logo=None):
+    unif_item, desm_items = collect_items_unif_desm(modo, uploaded_files_dict)
+    doc = preparar_doc(header_logo, footer_logo, watermark_logo)
+
+    nome_fmt = _title_case_name(form.get('nome_emp','') or "")
+    end_fmt = _title_keep_preps(form.get('endereco_emp','') or "")
+    cid_fmt = _fmt_cidade_slash_uf(form.get('cidade_emp','') or "")
+    bai_fmt = _fmt_bairro(form.get('bairro_emp','') or "")
+    zone_num, hemi = _auto_zone_from_city(form.get('cidade_emp','') or '')
+    coord_fmt = form.get('coord_fmt','utm')
+
+    heading(doc, "MEMORIAL DESCRITIVO DE UNIFICAÇÃO E/OU DESMEMBRAMENTO")
+
+    p = doc.add_paragraph(); p.alignment = WD_PARAGRAPH_ALIGNMENT.JUSTIFY
+    mats_raw = (form.get('matricula_emp','') or '').strip()
+    _set_run_defaults(p.add_run(
+        "O presente memorial tem por finalidade descrever a unificação e/ou desmembramento "
+        f"de área(s) de terras localizada(s) na {end_fmt or 'XXXX'}, bairro {bai_fmt or 'XXXX'}, "
+        f"município de {cid_fmt or 'XXXX'}, objeto das matrículas {mats_raw or 'XXXX'}."
+    ))
+
+    if unif_item:
+        heading(doc, "UNIFICAÇÃO")
+        texto = build_area_text(
+            unif_item.get('name',"UNIFICAÇÃO"),
+            unif_item,
+            "",
+            nome_fmt or "XXXX",
+            end_fmt or "XXXX",
+            bai_fmt or "XXXX",
+            cid_fmt or "XXXX",
+            coord_fmt=coord_fmt,
+            zone_num=zone_num,
+            hemi=hemi,
+            ident_label_only=True
+        )
+        adicionar_texto_formatado(doc, texto)
+
+    if desm_items:
+        heading(doc, "DESMEMBRAMENTO")
+        def _first_int_or_big(s):
+            m = re.search(r'(\d+)', _normalize(s))
+            return int(m.group(1)) if m else 10**9
+        desm_sorted = sorted(desm_items, key=lambda kv: (_first_int_or_big(kv[0]), _normalize(kv[0])))
+        for nm, it in desm_sorted:
+            texto = build_area_text(
+                nm,
+                it,
+                "",
+                nome_fmt or "XXXX",
+                end_fmt or "XXXX",
+                bai_fmt or "XXXX",
+                cid_fmt or "XXXX",
+                coord_fmt=coord_fmt,
+                zone_num=zone_num,
+                hemi=hemi,
+                ident_label_only=True
+            )
+            adicionar_texto_formatado(doc, texto)
+
+    _sec_assinaturas_simples(doc)
+    add_footer_left_text(doc, [
+        "WWW.SOLIDO.ARQ.BR",
+        "Avenida Ipiranga, 6681 – Prédio 99, Sala 906",
+        "Porto Alegre – RS Brasil",
+        "+ 55 51 99690-7857",
+    ], size_pt=10)
+    add_page_numbers(doc)
+
+    bio = BytesIO()
+    doc.save(bio)
+    bio.seek(0)
+    filename = "URB-PL_XXXX_UNIF_DESM_RX-VX.docx"
+    return bio, filename
+
+# ===================== CONDOMÍNIO / LOTEAMENTO =====================
+
+def generate_excel_fracao_ideal(dados_quadro):
+    if not dados_quadro:
+        raise ValueError("Sem dados de fração ideal.")
+    df = pd.DataFrame(dados_quadro)
+    df['__quad_key__'] = df['Quadra'].map(lambda q: quadra_label_sort_key(f"QUADRA {q}"))
+    df['__lote_key__'] = df['Lote'].map(_lote_num)
+    df = df.sort_values(['__quad_key__', '__lote_key__']).drop(columns=['__quad_key__', '__lote_key__'])
+
+    bio = BytesIO()
+    df.to_excel(bio, index=False)
+    bio.seek(0)
+
+    wb = load_workbook(bio)
+    ws = wb.active
+    font_header = Font(name='Calibri', size=12, bold=True)
+    font_cell = Font(name='Calibri', size=12)
+    center = Alignment(horizontal='center', vertical='center', wrap_text=True)
+    thin = Side(border_style='thin', color='000000')
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    for r in ws.iter_rows():
+        for c in r:
+            c.alignment = center
+            c.border = border
+            c.font = font_header if c.row == 1 else font_cell
+
+    for col in ws.columns:
+        maxlen = max(len(str(c.value)) if c.value is not None else 0 for c in col)
+        ws.column_dimensions[col[0].column_letter].width = max(12, maxlen + 2)
+
+    bio2 = BytesIO()
+    wb.save(bio2)
+    bio2.seek(0)
+    filename = "URB-PL_XXXX_QUADRO_FRACAO_IDEAL_RX-VX.xlsx"
+    return bio2, filename
+
+def generate_excel_unif_desm(modo, cidade, coord_fmt, uploaded_files_dict):
+    unif_item, desm_items = collect_items_unif_desm(modo, uploaded_files_dict)
+    if modo == 'unificacao' and not unif_item:
+        raise ValueError("Nenhuma área de unificação encontrada.")
+    if modo == 'desmembramento' and not desm_items:
+        raise ValueError("Nenhuma gleba de desmembramento encontrada.")
+    if modo == 'unif_desm' and not (unif_item or desm_items):
+        raise ValueError("Nenhuma área para unificação/desmembramento encontrada.")
+
+    zone_num, hemi = _auto_zone_from_city(cidade or '')
+
+    wb = Workbook()
+    wb.remove(wb.active)
+
+    def nova_aba(nome):
+        ws = wb.create_sheet(title=nome)
+        for idx in range(1, 9):
+            ws.column_dimensions[get_column_letter(idx)].width = 14
+        ws.column_dimensions['C'].width = 17
+        ws.column_dimensions['D'].width = 17
+        ws.column_dimensions['F'].width = 17
+        ws.column_dimensions['H'].width = 17
+        return ws
+
+    def headers(ws, row):
+        if coord_fmt == 'utm':
+            hC, hD = "COORD. X", "COORD. Y"
+        else:
+            hC, hD = "LATITUDE/LONGITUDE", ""
+        headers = ["DE", "PARA", hC, hD, "AZIMUTE", "DISTANCIA (m)", "RAIO (m)", "CONFRONTANTE"]
+        font_header = Font(name='Calibri', size=12, bold=True)
+        center = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        thin = Side(border_style='thin', color='000000')
+        border = Border(left=thin, right=thin, top=thin, bottom=thin)
+        for c, h in enumerate(headers, start=1):
+            cell = ws.cell(row=row, column=c, value=h)
+            cell.font = font_header
+            cell.alignment = center
+            cell.border = border
+
+    def append_block(ws, titulo, item, start_row):
+        font_header = Font(name='Calibri', size=12, bold=True)
+        font_cell = Font(name='Calibri', size=12)
+        center = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        thin = Side(border_style='thin', color='000000')
+        border = Border(left=thin, right=thin, top=thin, bottom=thin)
+        yellow = PatternFill('solid', fgColor='FFF59D')
+
+        max_col = 8
+        ws.merge_cells(start_row=start_row, start_column=1, end_row=start_row, end_column=max_col)
+        tcell = ws.cell(row=start_row, column=1, value=titulo)
+        tcell.font = font_header
+        tcell.alignment = center
+        for c in range(1, max_col + 1):
+            ws.cell(row=start_row, column=c).border = border
+
+        header_row = start_row + 1
+        headers(ws, header_row)
+
+        rows = _propaga_vertices(
+            item.get('first_point'),
+            item.get('segments', []),
+            coord_fmt_str=coord_fmt,
+            zone_num=zone_num,
+            hemi=hemi
+        )
+        r = header_row + 1
+        for row in rows:
+            vals = [
+                row.get("DE",""), row.get("PARA",""),
+                row.get("COORD_1",""), row.get("COORD_2",""),
+                row.get("AZIMUTE",""), row.get("DISTANCIA (m)",""),
+                row.get("RAIO (m)",""), row.get("CONFRONTANTE","")
+            ]
+            for c, v in enumerate(vals, start=1):
+                cell = ws.cell(row=r, column=c, value=v)
+                cell.font = font_cell
+                cell.alignment = center
+                cell.border = border
+            if re.match(r'^P\d+$', str(vals[0])):
+                ws.cell(row=r, column=1).fill = yellow
+            if re.match(r'^P\d+$', str(vals[1])):
+                ws.cell(row=r, column=2).fill = yellow
+            r += 1
+        return r + 1
+
+    if modo in ('unificacao', 'unif_desm') and unif_item:
+        ws_u = nova_aba("UNIFICACAO")
+        r = 1
+        area = unif_item.get("area_m2") or 0
+        titulo = f"UNIFICAÇÃO - ÁREA: {_fmt_br(area, 2)}m²"
+        r = append_block(ws_u, titulo, unif_item, r)
+
+    if modo in ('desmembramento', 'unif_desm') and desm_items:
+        ws_d = nova_aba("DESMEMBRAMENTO")
+        r = 1
+        def _first_int_or_big(s):
+            m = re.search(r'(\d+)', _normalize(s))
+            return int(m.group(1)) if m else 10**9
+        desm_sorted = sorted(desm_items, key=lambda kv: (_first_int_or_big(kv[0]), _normalize(kv[0])))
+        for nm, it in desm_sorted:
+            area = it.get("area_m2") or 0
+            titulo = f"{nm} - ÁREA: {_fmt_br(area, 2)}m²"
+            r = append_block(ws_d, titulo, it, r)
+
+    bio = BytesIO()
+    wb.save(bio)
+    bio.seek(0)
+    filename = "URB-PL_XXXX_VERTICES_UNIF_DESM_RX-VX.xlsx"
+    return bio, filename
+
+def build_condominio_loteamento_doc(modo, form, uploaded_files_dict,
+                                    header_logo=None, footer_logo=None, watermark_logo=None):
+    nome_fmt = _title_case_name(form.get('nome_emp','') or "")
+    end_fmt = _title_keep_preps(form.get('endereco_emp','') or "")
+    cid_fmt = _fmt_cidade_slash_uf(form.get('cidade_emp','') or "")
+    bai_fmt = _fmt_bairro(form.get('bairro_emp','') or "")
+    coord_fmt = form.get('coord_fmt','utm')
+
+    lot_files = [
+        (f, d) for f, d in uploaded_files_dict.items()
+        if f.lower().endswith(('.html', '.htm', '.txt')) and 'CIVILREPORT' not in f.upper()
+    ]
+    civil_files = [
+        (f, d) for f, d in uploaded_files_dict.items()
+        if f.lower().endswith(('.html', '.htm')) and 'CIVILREPORT' in f.upper()
+    ]
+
+    file_parcels = []
+    all_parcels = []
+    for fname, data in lot_files:
+        quadra = infer_quadra_from_filename(fname)
+        if fname.lower().endswith(('.html', '.htm')):
+            parcels = parse_parcels_from_html(data)
+        else:
+            parcels = parse_parcels_from_txt(data)
+        parcels.sort(key=lambda p: p.get('num', 0))
+        file_parcels.append((quadra, parcels))
+        all_parcels.extend(parcels)
+
+    file_parcels.sort(key=lambda qp: quadra_label_sort_key(qp[0]))
+    for i, (quadra, parcels) in enumerate(file_parcels):
+        parcels.sort(key=lambda p: int(p.get('num', 0)))
+        file_parcels[i] = (quadra, parcels)
+
+    tipo_full = "Condomínio Fechado de Lotes" if modo == 'condominio' else "Loteamento de Acesso Controlado"
+    eh_condominio = (modo == 'condominio')
+
+    area_tot_priv = 0.0
+    area_tot_cond = 0.0
+    if eh_condominio:
+        if (form.get('area_tot_priv_emp','') or '').strip():
+            try:
+                area_tot_priv = _to_float_br(form.get('area_tot_priv_emp',''))
+            except Exception:
+                pass
+        if (form.get('area_tot_cond_emp','') or '').strip():
+            try:
+                area_tot_cond = _to_float_br(form.get('area_tot_cond_emp',''))
+            except Exception:
+                pass
+
+    ane_enable = (form.get('ane_drop') == 'Sim')
+    ane_largura_m = None
+    if ane_enable and (form.get('ane_largura','') or '').strip():
+        try:
+            ane_largura_m = _to_float_br(form.get('ane_largura',''))
+        except Exception:
+            ane_largura_m = None
+
+    civil_items = []
+    for fname, data in civil_files:
+        civil_items.extend(parse_civilreport_from_html(data))
+
+    grouped = {k: [] for k in [
+        'remanescente', 'institucional', 'reserva_tecnica', 'app',
+        'verde', 'verde_preservacao', 'viario', 'condominial',
+        'quadras', 'outros'
+    ]}
+    for it in civil_items:
+        cat, title = classify_civil_item(it['name'])
+        grouped[cat].append((title, it))
+
+    def _num_key(nm):
+        m = re.search(r'(\d+)', _normalize(nm))
+        return int(m.group(1)) if m else 10**9
+
+    for cat in grouped:
+        if cat == 'viario':
+            grouped[cat].sort(key=lambda x: x[1]['name'])
+        else:
+            grouped[cat].sort(key=lambda x: (_num_key(x[1]['name']), _normalize(x[1]['name'])))
+
+    doc = preparar_doc(header_logo, footer_logo, watermark_logo)
+    heading(doc, "MEMORIAL DESCRITIVO")
+
+    # texto inicial
+    area_tot_fmt = area_tot_ext = ha_txt = perim_fmt = perim_ext = ""
+    if (form.get('area_total_emp','') or '').strip():
+        v = _to_float_br(form.get('area_total_emp',''))
+        area_tot_fmt = _fmt_br(v, 2) + "m²"
+        area_tot_ext = area_por_extenso(v)
+        ha_txt = _fmt_br(hectares_from_m2(v), 2) + "ha"
+    if (form.get('perimetro_emp','') or '').strip():
+        pval = _to_float_br(form.get('perimetro_emp',''))
+        perim_fmt = _fmt_br(pval, 2)
+        perim_ext = extenso_metros(pval)
+
+    zone_num, hemi = _auto_zone_from_city(form.get('cidade_emp','') or '')
+    mc_w = _utm_mc_from_zone(zone_num)
+
+    p1 = doc.add_paragraph(); p1.alignment = WD_PARAGRAPH_ALIGNMENT.JUSTIFY
+    _set_run_defaults(p1.add_run(
+        "O presente memorial tem por finalidade descrever o parcelamento de solo de acordo com o projeto denominado "
+    ))
+    r = p1.add_run(tipo_full + " "); _set_run_defaults(r, bold=True)
+    p1.add_run("“")
+    rnome = p1.add_run(nome_fmt or "XXXX"); _set_run_defaults(rnome, bold=True); rnome.italic = True
+    if not (form.get('nome_emp','') or '').strip():
+        rnome.font.highlight_color = WD_COLOR_INDEX.YELLOW
+    p1.add_run("”")
+    _set_run_defaults(p1.add_run(
+        f", em gleba situada frente à {end_fmt or 'XXXX'}, bairro {bai_fmt or 'XXXX'}, município de {cid_fmt or 'XXXX'}, "
+        f"com área superficial de {area_tot_fmt or 'XXXXm²'}"
+    ))
+    if area_tot_ext:
+        _set_run_defaults(p1.add_run(f" ({area_tot_ext}) - {ha_txt}"))
+    if perim_fmt:
+        _set_run_defaults(p1.add_run(
+            f" e perímetro de {perim_fmt}m ({perim_ext}), "
+        ))
+    else:
+        _set_run_defaults(p1.add_run(", "))
+    _set_run_defaults(p1.add_run(
+        f"conforme matrículas e plantas anexas."
+    ))
+
+    p2 = doc.add_paragraph(); p2.alignment = WD_PARAGRAPH_ALIGNMENT.JUSTIFY
+    if coord_fmt == 'utm':
+        _set_run_defaults(p2.add_run(
+            f"As coordenadas estão referidas ao Sistema Geodésico Brasileiro, Datum SIRGAS 2000, MC {mc_w}W, "
+            "coordenadas plano retangulares UTM."
+        ))
+    elif coord_fmt == 'dec':
+        _set_run_defaults(p2.add_run(
+            "As coordenadas estão referidas ao Sistema Geodésico Brasileiro, Datum SIRGAS 2000, em graus decimais."
+        ))
+    else:
+        _set_run_defaults(p2.add_run(
+            "As coordenadas estão referidas ao Sistema Geodésico Brasileiro, Datum SIRGAS 2000, "
+            "em graus, minutos e segundos."
+        ))
+
+    # Áreas especiais
+    order = ['remanescente','institucional','reserva_tecnica','app',
+             'verde','verde_preservacao','viario','condominial']
+    for cat in order:
+        itens = grouped.get(cat) or []
+        if not itens:
+            continue
+        title = itens[0][0]
+        heading(doc, title)
+        for _, it in itens:
+            texto = build_area_text(
+                it['name'],
+                it,
+                tipo_full,
+                nome_fmt or "XXXX",
+                end_fmt or "XXXX",
+                bai_fmt or "XXXX",
+                cid_fmt or "XXXX",
+                coord_fmt=coord_fmt,
+                zone_num=zone_num,
+                hemi=hemi
+            )
+            adicionar_texto_formatado(doc, texto)
+
+    # Quadras (placeholder)
+    if grouped.get('quadras'):
+        heading(doc, "DESCRIÇÃO DE QUADRAS")
+        for _, it in grouped['quadras']:
+            texto = build_area_text(
+                it['name'],
+                it,
+                tipo_full,
+                nome_fmt or "XXXX",
+                end_fmt or "XXXX",
+                bai_fmt or "XXXX",
+                cid_fmt or "XXXX",
+                coord_fmt=coord_fmt,
+                zone_num=zone_num,
+                hemi=hemi
+            )
+            adicionar_texto_formatado(doc, texto)
+
+    # Lotes
+    heading(doc, "DESCRIÇÃO DE LOTES")
+
+    dados_quadro = []
+    for quadra, parcels in file_parcels:
+        for parcel in parcels:
+            texto_lote = build_memorial_text(
+                parcel,
+                quadra,
+                tipo_full,
+                nome_fmt or "XXXX",
+                end_fmt or "XXXX",
+                bai_fmt or "XXXX",
+                cid_fmt or "XXXX",
+                ane_enable=ane_enable,
+                ane_largura_m=ane_largura_m,
+                eh_condominio=eh_condominio,
+                area_tot_priv=area_tot_priv,
+                area_tot_cond=area_tot_cond,
+                coord_fmt=coord_fmt,
+                zone_num=zone_num,
+                hemi=hemi
+            )
+            adicionar_texto_formatado(doc, texto_lote)
+
+            if eh_condominio and parcel.get("area_m2") and area_tot_priv:
+                area_priv = float(parcel['area_m2'])
+                fr = area_priv / area_tot_priv
+                area_comum = fr * (area_tot_cond or 0.0)
+                area_total = area_priv + area_comum
+                dados_quadro.append({
+                    'Lote': str(parcel['num']),
+                    'Quadra': quadra.replace("QUADRA","").strip(),
+                    'Área Privativa (m²)': _fmt_br(area_priv, 2),
+                    'Área Uso Comum (m²)': _fmt_br(area_comum, 2),
+                    'Área Real Total (m²)': _fmt_br(area_total, 2),
+                    'Fração Ideal': f"{fr:.7f}"
+                })
+
+    if eh_condominio and dados_quadro:
+        # tabela dentro do doc
+        dados_quadro.sort(key=lambda row: (quadra_label_sort_key("QUADRA "+row['Quadra']), _lote_num(row['Lote'])))
+        tbl = doc.add_table(rows=1, cols=6)
+        tbl.style = 'Table Grid'
+        hdr = tbl.rows[0].cells
+        headers = ["Lote","Quadra","Área Priv. (m²)","Área Uso Comum (m²)","Área Real Total (m²)","Fração Ideal"]
+        for i, h in enumerate(headers):
+            hdr[i].text = h
+            for r in hdr[i].paragraphs:
+                r.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+                for run in r.runs:
+                    _set_run_defaults(run, bold=True)
+        for row in dados_quadro:
+            cells = tbl.add_row().cells
+            vals = [
+                row['Lote'], row['Quadra'], row['Área Privativa (m²)'],
+                row['Área Uso Comum (m²)'], row['Área Real Total (m²)'],
+                row['Fração Ideal']
+            ]
+            for i, v in enumerate(vals):
+                cells[i].text = v
+                for par in cells[i].paragraphs:
+                    par.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+                    for run in par.runs:
+                        _set_run_defaults(run)
+
+    _sec_assinaturas_simples(doc)
+    add_footer_left_text(doc, [
+        "WWW.SOLIDO.ARQ.BR",
+        "Avenida Ipiranga, 6681 – Prédio 99, Sala 906",
+        "Porto Alegre – RS Brasil",
+        "+ 55 51 99690-7857",
+    ], size_pt=10)
+    add_page_numbers(doc)
+
+    bio = BytesIO()
+    doc.save(bio)
+    bio.seek(0)
+    filename = "URB-PL_XXXX_MEMORIAL_RX-VX.docx"
+    return bio, filename, (dados_quadro if eh_condominio else None)
+
+# ===================== ORQUESTRADORES PÚBLICOS =====================
 
 def generate_docx(tipo, form, uploaded_files_dict,
                   header_logo=None, footer_logo=None, watermark_logo=None):
@@ -1021,14 +1640,14 @@ def generate_docx(tipo, form, uploaded_files_dict,
             modo, form, uploaded_files_dict,
             header_logo, footer_logo, watermark_logo
         )
-        return bio, fname, (quadro or None)
+        return bio, fname, quadro
 
     raise ValueError("Tipo inválido.")
 
 def generate_excel(tipo, form, uploaded_files_dict, quadro_frac_ideal=None):
     if tipo == 'Memorial Condomínio':
         if not quadro_frac_ideal:
-            raise ValueError("Sem dados para fração ideal (gere o DOCX do condomínio primeiro).")
+            raise ValueError("Sem dados de fração ideal (gere o DOCX do condomínio primeiro).")
         return generate_excel_fracao_ideal(quadro_frac_ideal)
 
     if tipo in ('Memorial Unificação', 'Memorial Desmembramento', 'Memorial Unificação e Desmembramento'):
