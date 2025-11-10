@@ -1165,3 +1165,14 @@ with col_b1:
 with col_b2:
     if st.button("Baixar Excel (quando aplicável)"):
         on_download_excel_clicked()
+# ==============================================================
+#     FUNÇÕES PÚBLICAS (chamadas pelo app.py do Streamlit)
+# ==============================================================
+
+def generate_docx():
+    """Interface para o botão 'Gerar DOCX'"""
+    return on_generate_clicked()
+
+def generate_excel():
+    """Interface para o botão 'Baixar Excel'"""
+    return on_download_excel_clicked()
