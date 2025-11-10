@@ -18,13 +18,21 @@ import pandas as pd  # (novo p/ Excel)
 from pyproj import CRS, Transformer  # (novo p/ conversões)
 from datetime import datetime
 
-# ===================== Google Drive / Imagens =====================
-drive.mount('/content/drive', force_remount=True)
-SHARED_DRIVE = "Memorial - Colab"  # ajuste se necessário
+# ===================== Logos / Imagens (versão módulo puro) =====================
+from pathlib import Path
 
-TL_PATH = str(Path("/content/drive/Shared drives", SHARED_DRIVE, "marca d'agua 1.png"))
-HEADER_LOGO_PATH = str(Path("/content/drive/Shared drives", SHARED_DRIVE, "logo cabecalho.png"))
-FOOTER_LOGO_PATH = str(Path("/content/drive/Shared drives", SHARED_DRIVE, "logo rodape.png"))
+_BASE_DIR = Path(__file__).resolve().parent
+
+# Marca d'água no canto (mesmo papel do TL_PATH do Colab)
+TL_PATH = str(_BASE_DIR / "marca d'agua 1.png")
+
+# Logo do cabeçalho (substitui o logo cabecalho do Colab)
+HEADER_LOGO_PATH = str(_BASE_DIR / "assetslogo_cabecalho.png")
+
+# Logo do rodapé
+# Se você tiver um arquivo específico, troque o nome aqui.
+# Se não tiver, ele pode reaproveitar o mesmo logo do cabeçalho.
+FOOTER_LOGO_PATH = str(_BASE_DIR / "assetslogo_cabecalho.png")
 
 # ===================== Utilidades numéricas / texto =====================
 def _fmt_br(v, casas=2):
@@ -457,6 +465,7 @@ def adicionar_texto_formatado(doc, texto):
         i = m.end()
 
 # ===================== Logos / doc base =====================
+
 def add_header_logo(doc, image_path, width_inches=1.4):
     if not os.path.exists(image_path): return
     for section in doc.sections:
@@ -2333,9 +2342,7 @@ def _build_memorial_resumo_doc():
     ], size_pt=10)
     add_page_numbers(doc)
 
-    out_docx = "/content/URB-PL_XXXX_MEMORIAL RESUMO_RX-VX.docx"
-    doc.save(out_docx)
-    return out_docx
+    return doc_to_bytes(doc)
 
 def _build_solicitacao_analise_doc():
     """
@@ -2474,9 +2481,7 @@ def _build_solicitacao_analise_doc():
 
     # salvar arquivo
     cidade_nome = _cidade_sem_uf(cidade_emp.value)
-    out_docx = f"/content/URB-PL_XXXX_SOLICITAÇÃO DE ANÁLISE_RX-VX.docx"
-    doc.save(out_docx)
-    return out_docx
+    return doc_to_bytes(doc)
 
 def on_upload_clicked(_):
     out.clear_output()
@@ -2616,7 +2621,7 @@ def on_generate_clicked(_):
             doc.save(out_docx)
             with out: print(f"✅ Gerado: {out_docx}")
             time.sleep(0.6); files.download(out_docx)
-            return
+            return doc_to_bytes(doc)
 
         # ---------- CONDOMÍNIO / LOTEAMENTO ----------
         nome_fmt, end_fmt, cid_fmt, bai_fmt = _get_fmt_campos_basicos()
