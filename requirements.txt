@@ -1,0 +1,8 @@
+streamlit
+python-docx
+beautifulsoup4
+lxml
+pandas
+openpyxl
+pyproj
+num2words
