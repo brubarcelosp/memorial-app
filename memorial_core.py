@@ -1169,10 +1169,63 @@ with col_b2:
 #     FUNÇÕES PÚBLICAS (chamadas pelo app.py do Streamlit)
 # ==============================================================
 
-def generate_docx():
-    """Interface para o botão 'Gerar DOCX'"""
-    return on_generate_clicked()
+def generate_docx(tipo, form, uploaded_files_dict, header_logo=None, footer_logo=None, watermark_logo=None):
+    """
+    Interface compatível com o app.py.
+    Retorna (bytes, filename, meta).
+    """
+    try:
+        # Atualiza logos globais se enviados
+        global LOGO_PATH, HEADER_LOGO_PATH, FOOTER_LOGO_PATH, TL_PATH
+        if header_logo:
+            with open("header_logo_tmp.png", "wb") as f:
+                f.write(header_logo)
+            HEADER_LOGO_PATH = "header_logo_tmp.png"
+        if footer_logo:
+            with open("footer_logo_tmp.png", "wb") as f:
+                f.write(footer_logo)
+            FOOTER_LOGO_PATH = "footer_logo_tmp.png"
+        if watermark_logo:
+            with open("watermark_logo_tmp.png", "wb") as f:
+                f.write(watermark_logo)
+            TL_PATH = "watermark_logo_tmp.png"
 
-def generate_excel():
-    """Interface para o botão 'Baixar Excel'"""
-    return on_download_excel_clicked()
+        # Ajusta variáveis globais
+        global uploaded_files
+        uploaded_files = uploaded_files_dict
+
+        # Constrói o DOCX (reusa tua função interna)
+        out_path = on_generate_clicked()
+
+        # Retorna bytes, nome do arquivo e metadados se houver
+        if out_path and os.path.exists(out_path):
+            with open(out_path, "rb") as f:
+                return f.read(), os.path.basename(out_path), None
+        return None, "", None
+    except Exception as e:
+        raise RuntimeError(f"Erro interno ao gerar DOCX: {e}")
+
+def generate_excel(tipo, form, uploaded_files_dict, quadro_frac_ideal=None, **kwargs):
+    """
+    Interface compatível com o app.py.
+    Retorna (bytes, filename)
+    """
+    try:
+        global uploaded_files, _last_dados_quadro, _last_eh_condominio
+        uploaded_files = uploaded_files_dict
+
+        if quadro_frac_ideal:
+            _last_dados_quadro = quadro_frac_ideal
+            _last_eh_condominio = (tipo == "Memorial Condomínio")
+
+        # Gera Excel com base no tipo
+        on_download_excel_clicked()
+
+        # Captura o último Excel gerado (padrão)
+        for f in os.listdir():
+            if f.endswith(".xlsx"):
+                with open(f, "rb") as data:
+                    return data.read(), f
+        raise RuntimeError("Nenhum arquivo Excel foi gerado.")
+    except Exception as e:
+        raise RuntimeError(f"Erro interno ao gerar Excel: {e}")
