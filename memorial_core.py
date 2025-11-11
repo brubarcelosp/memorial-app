@@ -1,5 +1,27 @@
 # ===================== Instalações =====================
-!pip install python-docx bs4 lxml ipywidgets num2words pandas openpyxl pyproj --quiet
+# No Colab, você ainda pode instalar automaticamente.
+# No Streamlit / ambiente de produção, as libs vêm do requirements.txt.
+import sys, subprocess
+
+def _ensure_deps():
+    try:
+        import docx  # python-docx
+        import bs4, lxml  # BeautifulSoup4 + parser
+        import ipywidgets
+        import num2words
+        import pandas
+        import openpyxl
+        import pyproj
+    except Exception:
+        # Só tenta instalar se estiver em ambiente interativo (ex.: Colab)
+        if "google.colab" in sys.modules:
+            subprocess.check_call([
+                sys.executable, "-m", "pip", "install",
+                "python-docx", "bs4", "lxml", "ipywidgets",
+                "num2words", "pandas", "openpyxl", "pyproj"
+            ])
+
+_ensure_deps()
 
 # ===================== Imports =====================
 from IPython.display import display
@@ -11,20 +33,34 @@ from docx.shared import Pt, RGBColor, Inches, Cm
 from docx.enum.text import WD_PARAGRAPH_ALIGNMENT, WD_COLOR_INDEX, WD_LINE_SPACING
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-from google.colab import files, drive
 from pathlib import Path
+
+try:
+    from google.colab import files, drive
+    IN_COLAB = True
+except ImportError:
+    files = None
+    drive = None
+    IN_COLAB = False
+
 from num2words import num2words
 import pandas as pd  # (novo p/ Excel)
 from pyproj import CRS, Transformer  # (novo p/ conversões)
 from datetime import datetime
 
 # ===================== Google Drive / Imagens =====================
-drive.mount('/content/drive', force_remount=True)
-SHARED_DRIVE = "Memorial - Colab"  # ajuste se necessário
+SHARED_DRIVE = "Memorial - Colab"  # usado só no Colab
 
-TL_PATH = str(Path("/content/drive/Shared drives", SHARED_DRIVE, "marca d'agua 1.png"))
-HEADER_LOGO_PATH = str(Path("/content/drive/Shared drives", SHARED_DRIVE, "logo cabecalho.png"))
-FOOTER_LOGO_PATH = str(Path("/content/drive/Shared drives", SHARED_DRIVE, "logo rodape.png"))
+if IN_COLAB:
+    drive.mount('/content/drive', force_remount=True)
+    base_path = Path("/content/drive/Shared drives", SHARED_DRIVE)
+else:
+    # No Streamlit, use a pasta do projeto (mesmos nomes de arquivos que você mencionou)
+    base_path = Path(__file__).resolve().parent
+
+TL_PATH = str(base_path / "marca d'agua 1.png")
+HEADER_LOGO_PATH = str(base_path / "assetslogo_cabecalho.png")
+FOOTER_LOGO_PATH = str(base_path / "logo rodape.png")
 
 # ===================== Utilidades numéricas / texto =====================
 def _fmt_br(v, casas=2):
