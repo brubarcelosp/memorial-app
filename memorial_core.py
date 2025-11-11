@@ -24,8 +24,14 @@ def _ensure_deps():
 _ensure_deps()
 
 # ===================== Imports =====================
-from IPython.display import display
-import ipywidgets as widgets
+try:
+    from IPython.display import display
+except ImportError:
+    # No Streamlit isso vira um no-op para não quebrar o import do módulo
+    def display(*args, **kwargs):
+        pass
+# (display já tratado acima)
+
 import re, os, io, time, math
 from bs4 import BeautifulSoup
 from docx import Document
@@ -35,19 +41,14 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from pathlib import Path
 
+# ipywidgets só existe no Colab/Jupyter. No Streamlit a parte de UI não é usada.
 try:
-    from google.colab import files, drive
-    IN_COLAB = True
+    import ipywidgets as widgets
+    from ipywidgets import Layout, Label, HBox, GridBox, HTML, VBox
+    HAS_IPYW = True
 except ImportError:
-    files = None
-    drive = None
-    IN_COLAB = False
-
-from num2words import num2words
-import pandas as pd  # (novo p/ Excel)
-from pyproj import CRS, Transformer  # (novo p/ conversões)
-from datetime import datetime
-
+    widgets = None
+    HAS_IPYW = False
 # ===================== Google Drive / Imagens =====================
 SHARED_DRIVE = "Memorial - Colab"  # usado só no Colab
 
@@ -1219,19 +1220,20 @@ def _sec_assinaturas_resumo(doc):
     r = p.add_run("CAU-RS 15335-4"); _set_run_defaults(r)
 
 # ===================== Widgets =====================
-tipo_emp = widgets.Dropdown(
-    description='Tipo:',
-    options=[
-        ('Memorial Condomínio', 'condominio'),
-        ('Memorial Loteamento', 'loteamento'),
-        ('Memorial Unificação', 'unificacao'),
-        ('Memorial Desmembramento', 'desmembramento'),
-        ('Memorial Unificação e Desmembramento', 'unif_desm'),
-        ('Memorial Resumo', 'memorial_resumo'),
-        ('Solicitação de Análise', 'solicitacao_analise'),  # vírgula no fim!
-    ],
-    value='condominio'
-)
+if IN_COLAB and HAS_IPYW:
+    tipo_emp = widgets.Dropdown(
+        description='Tipo:',
+        options=[
+            ('Memorial Condomínio', 'condominio'),
+            ('Memorial Loteamento', 'loteamento'),
+            ('Memorial Unificação', 'unificacao'),
+            ('Memorial Desmembramento', 'desmembramento'),
+            ('Memorial Unificação e Desmembramento', 'unif_desm'),
+            ('Memorial Resumo', 'memorial_resumo'),
+            ('Solicitação de Análise', 'solicitacao_analise'),
+        ],
+        value='condominio'
+    )
 
 nome_emp = widgets.Text(description='Empreendimento:', placeholder='Ex.: Golden View')
 endereco_emp = widgets.Text(description='Endereço:', placeholder='Ex.: Av. Principal, 123')
@@ -2920,6 +2922,6 @@ def on_generate_clicked(_):
             traceback.print_exc(file=sys.stdout)
 
 # ---------- Bind ----------
-btn_upload.on_click(on_upload_clicked)
-btn_gerar.on_click(on_generate_clicked)
-btn_excel.on_click(on_download_excel_clicked)
+    btn_upload.on_click(on_upload_clicked)
+    btn_gerar.on_click(on_generate_clicked)
+    btn_excel.on_click(on_download_excel_clicked)
