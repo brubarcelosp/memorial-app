@@ -117,12 +117,16 @@ from pyproj import CRS, Transformer  # (novo p/ conversões)
 from datetime import datetime
 
 # ===================== Google Drive / Imagens =====================
-_colab_drive_mount('/content/drive', force_remount=True)
-SHARED_DRIVE = "Memorial - Colab"  # ajuste se necessário
+from pathlib import Path
+import os
 
-TL_PATH = str(Path("/content/drive/Shared drives", SHARED_DRIVE, "marca d'agua 1.png"))
-HEADER_LOGO_PATH = str(Path("/content/drive/Shared drives", SHARED_DRIVE, "logo cabecalho.png"))
-FOOTER_LOGO_PATH = str(Path("/content/drive/Shared drives", SHARED_DRIVE, "logo rodape.png"))
+# === Caminhos locais de imagens ===
+BASE_DIR = Path(__file__).resolve().parent
+ASSETS_DIR = BASE_DIR / "assets"
+
+TL_PATH = ASSETS_DIR / "marca_dagua_1.png"      # se quiser manter a marca d'água
+HEADER_LOGO_PATH = ASSETS_DIR / "logo_cabecalho.png"  # já existe conforme informado
+FOOTER_LOGO_PATH = ASSETS_DIR / "logo_rodape.png"     # opcional
 
 # ===================== Utilidades numéricas / texto =====================
 def _fmt_br(v, casas=2):
@@ -555,12 +559,19 @@ def adicionar_texto_formatado(doc, texto):
         i = m.end()
 
 # ===================== Logos / doc base =====================
+from docx.shared import Inches
+from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
+
 def add_header_logo(doc, image_path, width_inches=1.4):
-    if not os.path.exists(image_path): return
+    """Adiciona o logotipo no cabeçalho, alinhado à esquerda, distância igual ao Colab."""
+    if not os.path.exists(image_path):
+        return
     for section in doc.sections:
         section.header_distance = Inches(0.8)
         p = section.header.paragraphs[0] if section.header.paragraphs else section.header.add_paragraph()
-        r = p.add_run(); r.add_picture(image_path, width=Inches(width_inches))
+        p.alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
+        run = p.add_run()
+        run.add_picture(str(image_path), width=Inches(width_inches))
 
 def add_footer_logo(doc, image_path, width_inches=1.6):
     if not os.path.exists(image_path): return
