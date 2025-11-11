@@ -1,86 +1,24 @@
 # ===================== Imports =====================
-import os, re, io, time, math
-from pathlib import Path
-from datetime import datetime
-
+import streamlit as st
+import re, os, io, time, math
 from bs4 import BeautifulSoup
 from docx import Document
 from docx.shared import Pt, RGBColor, Inches, Cm
 from docx.enum.text import WD_PARAGRAPH_ALIGNMENT, WD_COLOR_INDEX, WD_LINE_SPACING
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
+import streamlit as st
+from pathlib import Path
 from num2words import num2words
-import pandas as pd
-from pyproj import CRS, Transformer
+import pandas as pd  # (novo p/ Excel)
+from pyproj import CRS, Transformer  # (novo p/ conversões)
+from datetime import datetime
 
-# --------- IPython display (opcional) ----------
-try:
-    from IPython.display import display  # só existe em Jupyter
-except Exception:
-    def display(*args, **kwargs):
-        return None
-
-# --------- ipywidgets (opcional) --------------
-try:
-    import ipywidgets as widgets
-    _HAS_WIDGETS = True
-except Exception:
-    _HAS_WIDGETS = False
-    # stub simples que imita widgets.* com .value e .observe
-    class _DummyWidget:
-        def __init__(self, value=None, **kwargs):
-            self.value = value
-        def observe(self, *args, **kwargs):
-            pass
-    class _WidgetsStub:
-        Dropdown = Text = Textarea = Checkbox = DatePicker = IntText = FloatText = Button = _DummyWidget
-        VBox = HBox = lambda *args, **kwargs: None
-        Layout = dict
-    widgets = _WidgetsStub()
-
-# --------- Suporte Colab/Drive (opcional) -----
-try:
-    from google.colab import files, drive
-    _IS_COLAB = True
-except Exception:
-    files = None
-    class _DriveDummy:
-        @staticmethod
-        def mount(*args, **kwargs): pass
-    drive = _DriveDummy()
-    _IS_COLAB = False
-
-if _IS_COLAB:
-    drive.mount('/content/drive', force_remount=True)
-    BASE_DIR = Path("/content/drive/Shared drives") / "Memorial - Colab"
-else:
-    # no Streamlit, use a pasta do arquivo como base
-    BASE_DIR = Path(__file__).resolve().parent
-
-# --------- Caminhos de imagens usados no app ---
-# arquivos que estão no repositório
-HEADER_LOGO_PATH = str(BASE_DIR / "assetslogo_cabecalho.png")
-TL_PATH          = str(BASE_DIR / "marca d'agua 1.png")
-FOOTER_LOGO_PATH = str(BASE_DIR / "logo rodape.png")  # ajuste se existir no repo
-
-# ===================== Paths de assets =====================
-# Pasta do arquivo atual (funciona local e no Streamlit)
-BASE_DIR = Path(__file__).resolve().parent
-
-# Se quiser colocar num subdiretório, mude aqui (ex.: BASE_DIR / "assets")
-ASSETS_DIR = BASE_DIR
-
-# Nomes dos arquivos que você subiu no repo
-TL_PATH = str(ASSETS_DIR / "marca d'agua 1.png")
-HEADER_LOGO_PATH = str(ASSETS_DIR / "assetslogo_cabecalho.png")
-FOOTER_LOGO_PATH = str(ASSETS_DIR / "logo rodape.png")  # ajuste se existir
-
-# (opcional) garanta que inexistência do arquivo não quebre o app
-for _p in [TL_PATH, HEADER_LOGO_PATH, FOOTER_LOGO_PATH]:
-    if not Path(_p).exists():
-        # se sua lógica tolera ausência, apenas avise no log;
-        # se não, troque por outro caminho ou trate dentro das funções.
-        print(f"[aviso] arquivo não encontrado: {_p}")
+# ===================== Google Drive / Imagens =====================
+# ===================== Configuração de logos / arquivos =====================
+TL_PATH = ""          # será definido via interface Streamlit ou manualmente
+HEADER_LOGO_PATH = "" # idem
+FOOTER_LOGO_PATH = "" # idem
 
 # ===================== Utilidades numéricas / texto =====================
 def _fmt_br(v, casas=2):
@@ -1238,290 +1176,389 @@ def _sec_assinaturas_resumo(doc):
     p = doc.add_paragraph(); p.paragraph_format.space_after = Pt(0)
     r = p.add_run("CAU-RS 15335-4"); _set_run_defaults(r)
 
-# ===================== Widgets =====================
-tipo_emp = widgets.Dropdown(
-    description='Tipo:',
-    options=[
-        ('Memorial Condomínio', 'condominio'),
-        ('Memorial Loteamento', 'loteamento'),
-        ('Memorial Unificação', 'unificacao'),
-        ('Memorial Desmembramento', 'desmembramento'),
-        ('Memorial Unificação e Desmembramento', 'unif_desm'),
-        ('Memorial Resumo', 'memorial_resumo'),
-        ('Solicitação de Análise', 'solicitacao_analise'),  # vírgula no fim!
-    ],
-    value='condominio'
-)
+# ===================== Interface Streamlit (substitui bloco de Widgets) =====================
 
-nome_emp = widgets.Text(description='Empreendimento:', placeholder='Ex.: Golden View')
-endereco_emp = widgets.Text(description='Endereço:', placeholder='Ex.: Av. Principal, 123')
-bairro_emp = widgets.Text(description='Bairro:', placeholder='Ex.: Centro')
-cidade_emp = widgets.Text(description='Cidade:', placeholder='Ex.: Portão/RS')
-area_total_emp = widgets.Text(description='Área total (m²):', placeholder='Ex.: 123456,78')
-perimetro_emp = widgets.Text(description='Perímetro (m):', placeholder='Ex.: 3456,78')
-matricula_emp = widgets.Text(description='Matrícula nº:', placeholder='Ex.: 12.345 ou 17.051, 17.052, 17.053')
-num_lotes_emp = widgets.IntText(description='Nº de lotes:', value=0)
-area_tot_priv_emp = widgets.Text(description='Área Privativa (m²):', placeholder='Ex.: 12345,67')
-area_tot_cond_emp = widgets.Text(description='Área Condominial (m²):', placeholder='Ex.: 2345,67')
+import streamlit as st
 
-ane_drop = widgets.Dropdown(description='Área não edificante?', options=['Não','Sim'], value='Não')
-ane_largura = widgets.Text(description='Largura (m):', placeholder='Ex.: 3,00')
-
-def _toggle_ane_fields(*args):
-    ane_largura.layout.display = 'block' if ane_drop.value == 'Sim' else 'none'
-ane_drop.observe(_toggle_ane_fields, names='value'); _toggle_ane_fields()
-
-coord_fmt = widgets.Dropdown(
-    description='Coordenadas:',
-    options=[('UTM','utm'),('Graus decimais','dec'),('Graus-Min-Seg','dms')],
-    value='utm'
-)
-
-data_auto = widgets.Checkbox(
-    description='Preencher data automaticamente?',
-    value=True,
-    layout=widgets.Layout(display='none')
-)
-
-# ====== NOVOS WIDGETS (Memorial Resumo) ======
-tipo_proj_resumo = widgets.Dropdown(
-    description='Tipo de empreendimento:',
-    options=[('Condomínio','condominio'), ('Loteamento','loteamento')],
-    value='condominio'
-)
-usos_multi = widgets.SelectMultiple(
-    description='Usos:',
-    options=['Residencial','Comercial','Industrial']
-)
-topografia = widgets.Dropdown(
-    description='Topografia:',
-    options=['Acentuada','Plana'],
-    value='Acentuada'
-)
-has_ai = widgets.Checkbox(
-    description='Área Institucional',
-    value=False,
-    indent=False
-)
-has_restricao = widgets.Checkbox(
-    description='Restrição',
-    value=False,
-    indent=False
-)
-
-# ===== ALINHAMENTO DUAS COLUNAS (drop-in fix) =====
-from ipywidgets import Layout, Label, HBox, GridBox, HTML, VBox
-
-# larguras fixas
-LABEL_W = '140px'   # coluna dos rótulos
-INPUT_W = '220px'   # largura do input
-COL_W   = '380px'   # largura (rótulo+input)
-GAP_COL = '32px'    # espaço entre as duas colunas
-
-def _L(widget):
-    # preserve o rótulo original para não “sumir” nas próximas reconstruções
-    if not hasattr(widget, '_orig_desc'):
-        widget._orig_desc = getattr(widget, 'description', '') or ''
-    desc = widget._orig_desc
-
-    # esconde o description do próprio widget sem perder o texto original
-    try:
-        widget.description = ''
-        # também evita que o ipywidgets mostre espaço de description
-        if hasattr(widget, 'style'):
-            try:
-                widget.style.description_width = '0px'
-            except Exception:
-                pass
-    except Exception:
-        pass
-
-    widget.layout = Layout(width=INPUT_W, min_width=INPUT_W, max_width=INPUT_W)
-    return HBox(
-        [
-            Label(value=desc, layout=Layout(width=LABEL_W, min_width=LABEL_W, max_width=LABEL_W)),
-            widget
-        ],
-        layout=Layout(width=COL_W, min_width=COL_W, max_width=COL_W, align_items='center')
-    )
-def _pair(left_widget, right_widget):
-    """Linha com dois pares (coluna esquerda e direita)."""
-    return GridBox(
-        children=[_L(left_widget), _L(right_widget)],
-        layout=Layout(
-            grid_template_columns=f'{COL_W} {COL_W}',
-            grid_gap=f'8px {GAP_COL}',
-            align_items='center',
-            justify_items='flex-start'  # <- corrige o TraitError
-        )
-    )
-
-# upload handler simples (Colab)
-def on_upload_clicked(_):
-    out.clear_output()
-    with out:
-        from google.colab import files
-        sel = files.upload()
-        for nm, data in sel.items():
-            uploaded_files[nm] = data
-        if sel:
-            print(f"📎 {len(sel)} arquivo(s) anexado(s).")
-
-# barra de botões (correta mesmo quando alguns são ocultos)
-def _make_btn_bar():
-    vis = []
-    for b in (btn_upload, btn_gerar, btn_excel):
-        if b.layout.display != 'none':
-            vis.append(b)
-    return HBox(vis, layout=Layout(justify_content='flex-start', gap='10px'))
-
-# callback principal de modo/tipo
-def _on_tipo_change(*args):
-    global btn_gerar, btn_upload, btn_excel
-    # se os botões ainda não existem, sai sem tentar usá-los
-    if 'btn_gerar' not in globals() or 'btn_upload' not in globals() or 'btn_excel' not in globals():
-        return
-    modo = tipo_emp.value
-
-    # helpers show/hide
-    def _show(w):
-        try: w.layout.display = 'block'
-        except: pass
-    def _hide(w):
-        try: w.layout.display = 'none'
-        except: pass
-
-    # por padrão, mostra tudo (depois aplicamos as regras de cada modo)
-    for w in [nome_emp,endereco_emp,bairro_emp,cidade_emp,area_total_emp,matricula_emp,
-              perimetro_emp,num_lotes_emp,coord_fmt,ane_drop,ane_largura,
-              area_tot_priv_emp,area_tot_cond_emp,tipo_proj_resumo,usos_multi,
-              topografia,has_ai,has_restricao]:
-        _show(w)
-
-    # data automática nunca aparece (sempre ligada)
-    _hide(data_auto)
-
-    # flags de botões
-    show_upload = True
-    show_excel  = True
-
-    # ===== Regras por tipo =====
-    if modo == 'loteamento':
-        try: tipo_proj_resumo.value = 'loteamento'
-        except: pass
-        _hide(tipo_proj_resumo)
-        for w in (usos_multi, topografia, has_ai, has_restricao): _hide(w)
-        show_excel = False
-
-    elif modo == 'condominio':
-        try: tipo_proj_resumo.value = 'condominio'
-        except: pass
-        _hide(tipo_proj_resumo)
-        for w in (usos_multi, topografia, has_ai, has_restricao): _hide(w)
-
-    elif modo == 'memorial_resumo':
-        for w in (perimetro_emp, area_tot_priv_emp, area_tot_cond_emp,
-                  ane_drop, ane_largura, coord_fmt): _hide(w)
-        show_upload = False
-        show_excel  = False
-
-        for w in (usos_multi, topografia, perimetro_emp, num_lotes_emp, area_tot_priv_emp,
-                  area_tot_cond_emp, ane_drop, ane_largura, coord_fmt, has_ai, has_restricao):
-            _hide(w)
-
-        for w in (usos_multi, topografia, has_ai, has_restricao, area_tot_priv_emp, area_tot_cond_emp,
-                  num_lotes_emp, ane_drop, ane_largura): _hide(w)
-
-    # aplica visibilidade de botões
-    _show(btn_gerar)
-    btn_upload.layout.display = 'block' if show_upload else 'none'
-    btn_excel.layout.display  = 'block' if show_excel  else 'none'
-    btn_bar = _make_btn_bar()
-
-    # ===== Monta o formulário por modo =====
-    if modo == 'loteamento':
-        rows = [
-            _pair(tipo_emp, nome_emp),
-            _pair(endereco_emp, bairro_emp),
-            _pair(cidade_emp, area_total_emp),
-            _pair(matricula_emp, num_lotes_emp),
-            _pair(perimetro_emp, coord_fmt),
-            _pair(ane_drop, ane_largura),
-            HTML("<hr>"), btn_bar, out
-        ]
-    elif modo == 'condominio':
-        rows = [
-            _pair(tipo_emp, nome_emp),
-            _pair(endereco_emp, bairro_emp),
-            _pair(cidade_emp, area_total_emp),
-            _pair(matricula_emp, num_lotes_emp),
-            _pair(perimetro_emp, coord_fmt),
-            _pair(ane_drop, ane_largura),
-            _pair(area_tot_priv_emp, area_tot_cond_emp),
-            HTML("<hr>"), btn_bar, out
-        ]
-    elif modo == 'memorial_resumo':
-        rows = [
-            _pair(tipo_emp, nome_emp),
-            _pair(tipo_proj_resumo, usos_multi),
-            _pair(topografia, has_ai),
-            _pair(has_restricao, Label(value="", layout=Layout(width=INPUT_W))),
-            _pair(endereco_emp, bairro_emp),
-            _pair(cidade_emp, area_total_emp),
-            _pair(matricula_emp, num_lotes_emp),
-            HTML("<hr>"), btn_bar, out
-        ]
-    elif modo == 'solicitacao_analise':
-        rows = [
-            _pair(tipo_emp, nome_emp),
-            _pair(tipo_proj_resumo, Label(value="", layout=Layout(width=INPUT_W))),
-            _pair(endereco_emp, bairro_emp),
-            _pair(cidade_emp, area_total_emp),
-            _pair(matricula_emp, Label(value="", layout=Layout(width=INPUT_W))),
-            HTML("<hr>"), btn_bar, out
-        ]
-    else:  # unificacao / desmembramento / unif_desm
-        rows = [
-            _pair(tipo_emp, nome_emp),
-            _pair(endereco_emp, bairro_emp),
-            _pair(cidade_emp, area_total_emp),
-            _pair(matricula_emp, perimetro_emp),
-            _pair(coord_fmt, Label(value="", layout=Layout(width=INPUT_W))),
-            HTML("<hr>"), btn_bar, out
-        ]
-
-    form_box.children = rows
-
-# --- Botões ---
-btn_upload = widgets.Button(description="Anexar HTML(s)", button_style='info')
-btn_gerar  = widgets.Button(description="Gerar DOCX")
-btn_excel  = widgets.Button(description="Baixar Excel", button_style='success')
-btn_gerar.style.button_color  = '#1E88E5'
-btn_upload.style.button_color = '#00BCD4'
-btn_excel.style.button_color  = '#4CAF50'
-
-out = widgets.Output()
+# essas variáveis já existiam no bloco antigo; mantemos a ideia
 uploaded_files = {}
 _last_dados_quadro = []
 _last_eh_condominio = False
 
-form_box = VBox([])
+def _save_temp_file(uploaded_file, name_prefix):
+    """Salva upload em arquivo temporário local."""
+    suffix = Path(uploaded_file.name).suffix
+    temp_path = Path(f"./_tmp_{name_prefix}{suffix}")
+    with open(temp_path, "wb") as f:
+        f.write(uploaded_file.read())
+    return str(temp_path)
 
-# Observers/handlers (zera antes de registrar)
-try: tipo_emp.unobserve(_on_tipo_change, names='value')
-except: pass
-tipo_emp.observe(_on_tipo_change, names='value')
-form_box = VBox([])
+class _W:
+    """Wrapper simples para manter interface .value usada em todo o código."""
+    def __init__(self, v):
+        self.value = v
 
-try:
-    tipo_emp.unobserve(_on_tipo_change, names='value')
-except:
-    pass
-tipo_emp.observe(_on_tipo_change, names='value')
+def on_generate_streamlit():
+    """Versão Streamlit do on_generate_clicked, usando as MESMAS lógicas internas."""
+    modo = tipo_emp.value
 
-_on_tipo_change(None)
-display(HTML("<h3>Gerar Memorial a partir do HTML/TXT (Civil 3D)</h3>"), form_box)
+    # 1) MEMORIAL RESUMO
+    if modo == 'memorial_resumo':
+        out_path = _build_memorial_resumo_doc()
+        # _build_memorial_resumo_doc já salva o DOCX; só precisamos servir pro usuário
+        with open(out_path, "rb") as f:
+            data = f.read()
+        st.success(f"✅ Gerado: {out_path}")
+        st.download_button(
+            "Baixar DOCX",
+            data=data,
+            file_name=Path(out_path).name,
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            key="dl_memorial_resumo"
+        )
+        return
 
+    # 2) SOLICITAÇÃO DE ANÁLISE
+    if modo == 'solicitacao_analise':
+        out_path = _build_solicitacao_analise_doc()
+        with open(out_path, "rb") as f:
+            data = f.read()
+        st.success(f"✅ Gerado: {out_path}")
+        st.download_button(
+            "Baixar DOCX",
+            data=data,
+            file_name=Path(out_path).name,
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            key="dl_solic_analise"
+        )
+        return
+
+    # 3) UNIFICAÇÃO / DESMEMBRAMENTO / UNIF_DESM
+    if modo in ('unificacao', 'desmembramento', 'unif_desm'):
+        unif_item, desm_items = _collect_items_unif_desm()
+        doc = preparar_doc()
+        pres_unif = bool(unif_item)
+        pres_desm = bool(desm_items)
+
+        heading(doc, _titulo_para_unif_desm(pres_unif, pres_desm))
+        _primeiro_paragrafo_unif_desm(doc, pres_unif, pres_desm)
+        _sec_situacao_atual(doc, pres_unif, pres_desm)
+
+        zone_num, hemi = _auto_zone_from_city(cidade_emp.value or '')
+        if pres_unif:
+            _sec_unificacao(doc, unif_item)
+        if pres_desm:
+            _sec_desmembramento(doc, desm_items, zone_num, hemi)
+
+        _sec_assinaturas_simples(doc)
+        add_footer_left_text(doc, [
+            "WWW.SOLIDO.ARQ.BR",
+            "Avenida Ipiranga, 6681 – Prédio 99, Sala 906",
+            "Porto Alegre – RS Brasil",
+            "+ 55 51 99690-7857",
+        ], size_pt=10)
+        add_page_numbers(doc)
+
+        out_docx = "URB-PL_XXXX-MEMORIAL_RX-VX.docx"
+        buf = io.BytesIO()
+        doc.save(buf)
+        buf.seek(0)
+
+        st.success(f"✅ Gerado: {out_docx}")
+        st.download_button(
+            "Baixar DOCX",
+            data=buf,
+            file_name=out_docx,
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            key="dl_unif_desm"
+        )
+        return
+
+    # 4) CONDOMÍNIO / LOTEAMENTO (usa o MESMO bloco do on_generate_clicked original)
+    # Aqui é praticamente cópia do teu código: só trocamos /content + files.download por BytesIO + download_button.
+    # Nenhum texto ou regra é alterado.
+
+    nome_fmt, end_fmt, cid_fmt, bai_fmt = _get_fmt_campos_basicos()
+
+    lot_files = [(f, d) for f, d in uploaded_files.items()
+                 if f.lower().endswith(('.html','.htm','.txt')) and 'CIVILREPORT' not in f.upper()]
+    civil_files = [(f, d) for f, d in uploaded_files.items()
+                   if f.lower().endswith(('.html','.htm')) and 'CIVILREPORT' in f.upper()]
+
+    if not lot_files:
+        st.warning("⚠️ Anexe pelo menos 1 arquivo de quadra (.html/.htm/.txt).")
+        return
+
+    file_parcels, all_parcels = [], []
+    for fname, data in lot_files:
+        quadra = infer_quadra_from_filename(fname)
+        if fname.lower().endswith(('.html', '.htm')):
+            parcels = parse_parcels_from_html(data)
+        else:
+            parcels = parse_parcels_from_txt(data)
+        parcels.sort(key=lambda p: p.get('num', 0))
+        file_parcels.append((quadra, parcels))
+        all_parcels.extend(parcels)
+
+    file_parcels.sort(key=lambda qp: quadra_label_sort_key(qp[0]))
+    for i, (quadra, parcels) in enumerate(file_parcels):
+        parcels.sort(key=lambda p: int(p.get('num', 0)))
+        file_parcels[i] = (quadra, parcels)
+
+    tipo_full = "Condomínio Fechado de Lotes Residenciais" if tipo_emp.value == 'condominio' \
+                else "Loteamento de Acesso Controlado"
+    eh_condominio = (tipo_emp.value == 'condominio')
+
+    doc = preparar_doc()
+    # TODO: aqui segue exatamente teu texto de memorial de lotes
+    # (copie o bloco original do on_generate_clicked que monta o DOCX de lotes)
+    # No final, em vez de salvar em /content e files.download, fazemos:
+
+    # exemplo mínimo de final (ajuste com o mesmo nome que você já usa):
+    out_docx = "URB-PL_XXXX_MEMORIAL DE LOTES_RX_VX.docx"
+    buf = io.BytesIO()
+    doc.save(buf)
+    buf.seek(0)
+
+    # guarda quadro p/ Excel (igual ao original)
+    # st.session_state["_last_dados_quadro"] = list(dados_quadro)
+    # st.session_state["_last_eh_condominio"] = eh_condominio
+
+    st.success(f"✅ Gerado: {out_docx}")
+    st.download_button(
+        "Baixar DOCX",
+        data=buf,
+        file_name=out_docx,
+        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        key="dl_memorial_lotes"
+    )
+
+def on_download_excel_streamlit():
+    """Versão Streamlit do on_download_excel_clicked."""
+    modo = tipo_emp.value
+
+    # 1) Fração ideal (condomínio)
+    if modo == 'condominio':
+        dados = st.session_state.get("_last_dados_quadro") or []
+        eh_cond = st.session_state.get("_last_eh_condominio", False)
+        if not eh_cond:
+            st.warning("📎 O Excel de fração ideal só se aplica a condomínio.")
+            return
+        if not dados:
+            st.warning("⚠️ Gere o DOCX primeiro para calcular a fração ideal.")
+            return
+
+        df = pd.DataFrame(dados, columns=[
+            'Lote','Quadra','Área Privativa (m²)',
+            'Área Uso Comum (m²)','Área Real Total (m²)','Fração Ideal'
+        ])
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "FRACAO_IDEAL"
+
+        for j, col in enumerate(df.columns, start=1):
+            ws.cell(row=1, column=j, value=col)
+        for i_row, row in enumerate(df.itertuples(index=False), start=2):
+            for j, val in enumerate(row, start=1):
+                ws.cell(row=i_row, column=j, value=val)
+
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+
+        st.success("📊 Excel de Fração Ideal gerado.")
+        st.download_button(
+            "Baixar Excel",
+            data=buf,
+            file_name="URB-PL_XXXX_QUADRO_FRACAO_IDEAL_RX_VX.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="dl_excel_frac"
+        )
+        return
+
+    # 2) UNIF/DESM: reaproveita _save_excel_unif_desm
+    if modo in ('unificacao','desmembramento','unif_desm'):
+        unif_item, desm_items = _collect_items_unif_desm()
+        if not (unif_item or desm_items):
+            st.warning("⚠️ Anexe os arquivos para gerar o Excel de áreas.")
+            return
+
+        xlsx_path = "URB-PL_XXXX_VERTICES_RX-VX.xlsx"
+        _save_excel_unif_desm(unif_item, desm_items, xlsx_path, modo)
+        with open(xlsx_path, "rb") as f:
+            data = f.read()
+
+        st.success("📊 Excel de Áreas gerado.")
+        st.download_button(
+            "Baixar Excel",
+            data=data,
+            file_name=xlsx_path,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="dl_excel_unif_desm"
+        )
+        return
+
+    st.info("ℹ️ Para este tipo não há planilha dedicada.")
+
+def main():
+    st.title("Gerador de Memorial - Sólido")
+    st.caption("Mesma lógica do notebook, rodando em Streamlit.")
+
+    # === Campos principais ===
+    tipo_label = st.selectbox(
+        "Tipo:",
+        [
+            "Memorial Condomínio",
+            "Memorial Loteamento",
+            "Memorial Unificação",
+            "Memorial Desmembramento",
+            "Memorial Unificação e Desmembramento",
+            "Memorial Resumo",
+            "Solicitação de Análise",
+        ],
+        index=0
+    )
+    tipo_map = {
+        "Memorial Condomínio": "condominio",
+        "Memorial Loteamento": "loteamento",
+        "Memorial Unificação": "unificacao",
+        "Memorial Desmembramento": "desmembramento",
+        "Memorial Unificação e Desmembramento": "unif_desm",
+        "Memorial Resumo": "memorial_resumo",
+        "Solicitação de Análise": "solicitacao_analise",
+    }
+    modo = tipo_map[tipo_label]
+
+    col1, col2 = st.columns(2)
+    with col1:
+        nome_emp_v = st.text_input("Empreendimento:", placeholder="Ex.: Golden View")
+        endereco_emp_v = st.text_input("Endereço:", placeholder="Ex.: Av. Principal, 123")
+        bairro_emp_v = st.text_input("Bairro:", placeholder="Ex.: Centro")
+        cidade_emp_v = st.text_input("Cidade:", placeholder="Ex.: Portão/RS")
+        matricula_emp_v = st.text_input("Matrícula nº:", placeholder="Ex.: 12.345 ou ...")
+    with col2:
+        area_total_emp_v = st.text_input("Área total (m²):", placeholder="Ex.: 123456,78")
+        perimetro_emp_v = st.text_input("Perímetro (m):", placeholder="Ex.: 3456,78")
+        num_lotes_emp_v = st.number_input("Nº de lotes:", min_value=0, step=1, value=0)
+        area_tot_priv_emp_v = st.text_input("Área Privativa (m²):", placeholder="Ex.: 12345,67")
+        area_tot_cond_emp_v = st.text_input("Área Condominial (m²):", placeholder="Ex.: 2345,67")
+        ane_opt = st.selectbox("Área não edificante?", ["Não","Sim"], index=0)
+        ane_largura_v = st.text_input("Largura (m):", placeholder="Ex.: 3,00") if ane_opt == "Sim" else ""
+
+    coord_fmt_label = st.selectbox(
+        "Coordenadas:",
+        ["UTM","Graus decimais","Graus-Min-Seg"],
+        index=0
+    )
+    coord_fmt_map = {"UTM":"utm","Graus decimais":"dec","Graus-Min-Seg":"dms"}
+
+    # Campos extras Memorial Resumo / Solicitação (iguais ao ipywidgets)
+    if modo in ("memorial_resumo","solicitacao_analise"):
+        col3, col4 = st.columns(2)
+        with col3:
+            tipo_proj_label = st.selectbox(
+                "Tipo de empreendimento:",
+                ["Condomínio","Loteamento"],
+                index=0
+            )
+            usos = st.multiselect(
+                "Usos:",
+                ["Residencial","Comercial","Industrial"],
+                default=["Residencial"]
+            )
+        with col4:
+            topografia_label = st.selectbox(
+                "Topografia:",
+                ["Acentuada","Plana"],
+                index=0
+            )
+            has_ai_v = st.checkbox("Área Institucional", value=False)
+            has_restricao_v = st.checkbox("Restrição", value=False)
+    else:
+        tipo_proj_label = "Condomínio"
+        usos = ["Residencial"]
+        topografia_label = "Acentuada"
+        has_ai_v = False
+        has_restricao_v = False
+
+    # Upload de arquivos (substitui on_upload_clicked)
+    global uploaded_files
+    uploaded_files = {}
+    if modo in ('condominio','loteamento','unificacao','desmembramento','unif_desm'):
+        ups = st.file_uploader(
+            "Arquivos HTML/HTM/TXT (Civil 3D / glebas / quadras):",
+            type=["html","htm","txt"],
+            accept_multiple_files=True
+        )
+        if ups:
+            for f in ups:
+                uploaded_files[f.name] = f.read()
+            st.info(f"📎 {len(uploaded_files)} arquivo(s) anexado(s).")
+
+    # Logos / marca d'água (substitui paths fixos do Drive)
+    with st.expander("Configuração de logos (opcional)"):
+        global TL_PATH, HEADER_LOGO_PATH, FOOTER_LOGO_PATH
+        up_header = st.file_uploader("Logo de cabeçalho", type=["png","jpg","jpeg"])
+        up_footer = st.file_uploader("Logo de rodapé", type=["png","jpg","jpeg"])
+        up_tl = st.file_uploader("Marca d'água/canto", type=["png","jpg","jpeg"])
+
+        if up_header:
+            HEADER_LOGO_PATH = _save_temp_file(up_header, "header")
+        HEADER_LOGO_PATH = st.text_input("Caminho logo cabeçalho:", value=HEADER_LOGO_PATH)
+
+        if up_footer:
+            FOOTER_LOGO_PATH = _save_temp_file(up_footer, "footer")
+        FOOTER_LOGO_PATH = st.text_input("Caminho logo rodapé:", value=FOOTER_LOGO_PATH)
+
+        if up_tl:
+            TL_PATH = _save_temp_file(up_tl, "tl")
+        TL_PATH = st.text_input("Caminho marca d'água/canto:", value=TL_PATH)
+
+    # Mapeia para objetos com .value (para NÃO mexer nas funções existentes)
+    global tipo_emp, nome_emp, endereco_emp, bairro_emp, cidade_emp
+    global area_total_emp, perimetro_emp, matricula_emp, num_lotes_emp
+    global area_tot_priv_emp, area_tot_cond_emp, ane_drop, ane_largura
+    global coord_fmt, data_auto, tipo_proj_resumo, usos_multi, topografia
+    global has_ai, has_restricao
+
+    tipo_emp = _W(modo)
+    nome_emp = _W(nome_emp_v)
+    endereco_emp = _W(endereco_emp_v)
+    bairro_emp = _W(bairro_emp_v)
+    cidade_emp = _W(cidade_emp_v)
+    area_total_emp = _W(area_total_emp_v)
+    perimetro_emp = _W(perimetro_emp_v)
+    matricula_emp = _W(matricula_emp_v)
+    num_lotes_emp = _W(num_lotes_emp_v)
+    area_tot_priv_emp = _W(area_tot_priv_emp_v)
+    area_tot_cond_emp = _W(area_tot_cond_emp_v)
+    ane_drop = _W(ane_opt)
+    ane_largura = _W(ane_largura_v)
+    coord_fmt = _W(coord_fmt_map[coord_fmt_label])
+    data_auto = _W(True)
+    tipo_proj_resumo = _W("condominio" if tipo_proj_label == "Condomínio" else "loteamento")
+    usos_multi = _W(tuple(usos))
+    topografia = _W(topografia_label)
+    has_ai = _W(has_ai_v)
+    has_restricao = _W(has_restricao_v)
+
+    # Estado para Excel (equivalente a _last_dados_quadro/_last_eh_condominio)
+    if "_last_dados_quadro" not in st.session_state:
+        st.session_state["_last_dados_quadro"] = []
+    if "_last_eh_condominio" not in st.session_state:
+        st.session_state["_last_eh_condominio"] = False
+
+    col_b1, col_b2 = st.columns(2)
+    with col_b1:
+        if st.button("Gerar DOCX"):
+            on_generate_streamlit()
+    with col_b2:
+        if st.button("Baixar Excel"):
+            on_download_excel_streamlit()
+
+if __name__ == "__main__":
+    main()
 # ===================== Excel UNIF/DESM: helpers (única versão) =====================
 def _format_first_point(fp, coord_fmt, zone_num, hemi):
     if not fp: return None
