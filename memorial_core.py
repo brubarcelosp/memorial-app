@@ -1,6 +1,3 @@
-# ===================== Instalações =====================
-!pip install python-docx bs4 lxml ipywidgets num2words pandas openpyxl pyproj --quiet
-
 # ===================== Imports =====================
 from IPython.display import display
 import ipywidgets as widgets
