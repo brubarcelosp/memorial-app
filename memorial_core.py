@@ -559,19 +559,36 @@ def adicionar_texto_formatado(doc, texto):
         i = m.end()
 
 # ===================== Logos / doc base =====================
+# memorial_core.py
+from pathlib import Path
+import os
 from docx.shared import Inches
 from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
 
+# --- caminhos locais (sem Colab) ---
+BASE_DIR = Path(__file__).resolve().parent
+
+# tolera os dois jeitos de salvar o arquivo: "assets/logo_cabecalho.png" ou "assetslogo_cabecalho.png"
+CANDIDATES = [
+    BASE_DIR / "assets" / "logo_cabecalho.png",
+    BASE_DIR / "assetslogo_cabecalho.png",
+]
+HEADER_LOGO_PATH = next((str(p) for p in CANDIDATES if p.exists()), str(CANDIDATES[0]))
+
+# se não tiver marca d’água/rodapé, pode deixar None ou apontar depois
+TL_PATH = None
+FOOTER_LOGO_PATH = None
+
 def add_header_logo(doc, image_path, width_inches=1.4):
-    """Adiciona o logotipo no cabeçalho, alinhado à esquerda, distância igual ao Colab."""
-    if not os.path.exists(image_path):
+    """Logo no cabeçalho, alinhado à esquerda, distância idêntica ao Colab."""
+    if not image_path or not os.path.exists(image_path):
         return
     for section in doc.sections:
-        section.header_distance = Inches(0.8)
+        section.header_distance = Inches(0.8)  # igual ao Colab
         p = section.header.paragraphs[0] if section.header.paragraphs else section.header.add_paragraph()
         p.alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
         run = p.add_run()
-        run.add_picture(str(image_path), width=Inches(width_inches))
+        run.add_picture(image_path, width=Inches(width_inches))
 
 def add_footer_logo(doc, image_path, width_inches=1.6):
     if not os.path.exists(image_path): return
@@ -609,9 +626,9 @@ def _apply_moderate_margins(doc):
 def preparar_doc():
     doc = Document()
     _apply_moderate_margins(doc)
-    add_header_logo(doc, HEADER_LOGO_PATH)
-    add_corner_image_watermark_cm(doc, TL_PATH)
-    add_footer_logo(doc, FOOTER_LOGO_PATH)
+    add_header_logo(doc, HEADER_LOGO_PATH, width_inches=1.4)  # mantém o 1.4"
+    add_corner_image_watermark_cm(doc, TL_PATH)               # opcional
+    add_footer_logo(doc, FOOTER_LOGO_PATH)                    # opcional
     return doc
 
 # --- Força o Word a atualizar campos (TOC) ao abrir ---
