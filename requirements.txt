@@ -1,8 +1,7 @@
-streamlit
-python-docx
 beautifulsoup4
 lxml
+python-docx
+num2words
 pandas
 openpyxl
 pyproj
-num2words
