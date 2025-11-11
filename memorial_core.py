@@ -1,107 +1,9 @@
-
-import streamlit as st
-import io, os, sys, types
-from contextlib import contextmanager
-
-# ======= Streamlit shims for Colab/Jupyter-only APIs =======
-def display(*args, **kwargs):
-    for obj in args:
-        try:
-            import pandas as pd
-            if isinstance(obj, pd.DataFrame):
-                st.dataframe(obj)
-                continue
-        except Exception:
-            pass
-        st.write(obj)
-
-def _colab_files_upload():
-    ups = st.file_uploader("Upload de arquivos", accept_multiple_files=True)
-    result = {}
-    if ups:
-        # Streamlit returns either a single UploadedFile or a list depending on parameter
-        if not isinstance(ups, (list, tuple)):
-            ups = [ups]
-        for u in ups:
-            try:
-                result[u.name] = u.getvalue()
-            except Exception:
-                result[u.name] = u.read()
-    return result
-
-def _colab_files_download(path):
-    try:
-        with open(path, "rb") as f:
-            st.download_button("Baixar arquivo: " + os.path.basename(path), f, file_name=os.path.basename(path))
-    except Exception as e:
-        st.error(f"Falha no download: {e}")
-
-def _colab_drive_mount(mountpoint):
-    st.info(f"(Substituição Streamlit) Drive montado em: {mountpoint}")
-
-@contextmanager
-def clear_output(wait=False):
-    # Compat: no-op; Streamlit re-renderiza automaticamente
-    yield
-
-# Expose fake modules so 'from IPython.display import display' or 'google.colab.*' won't crash if still present
-IPython = types.ModuleType("IPython")
-display_mod = types.ModuleType("display")
-display_mod.display = display
-sys.modules["IPython"] = IPython
-sys.modules["IPython.display"] = display_mod
-
-google = types.ModuleType("google")
-colab = types.ModuleType("colab")
-class _Files: 
-    upload = staticmethod(_colab_files_upload)
-    download = staticmethod(_colab_files_download)
-class _Drive:
-    mount = staticmethod(_colab_drive_mount)
-colab.files = _Files()
-colab.drive = _Drive()
-google.colab = colab
-sys.modules["google"] = google
-sys.modules["google.colab"] = colab
-
-# (Opcional) mapeamento simples de alguns widgets comuns do ipywidgets
-class _WidgetsShim:
-    def Text(self, description="", value="", **kwargs):
-        return st.text_input(description or "Text", value=value)
-    def Textarea(self, description="", value="", **kwargs):
-        return st.text_area(description or "Textarea", value=value)
-    def IntText(self, description="", value=0, **kwargs):
-        return st.number_input(description or "Int", value=int(value), step=1)
-    def FloatText(self, description="", value=0.0, **kwargs):
-        return st.number_input(description or "Float", value=float(value))
-    def Dropdown(self, options=(), value=None, description="", **kwargs):
-        idx = 0
-        if value in options:
-            idx = list(options).index(value)
-        return st.selectbox(description or "Dropdown", options, index=idx if options else 0)
-    def Checkbox(self, value=False, description="", **kwargs):
-        return st.checkbox(description or "Checkbox", value=value)
-    def RadioButtons(self, options=(), description="", **kwargs):
-        return st.radio(description or "Radio", options)
-    def Button(self, description="", **kwargs):
-        return st.button(description or "Button")
-    def FileUpload(self, description="", **kwargs):
-        return st.file_uploader(description or "File Upload")
-    def HTML(self, value="", **kwargs):
-        st.markdown(value, unsafe_allow_html=True)
-        return value
-    def Output(self, **kwargs):
-        return st.empty()
-
-widgets = _WidgetsShim()
-sys.modules["ipywidgets"] = widgets
-
-# ======= Início do código convertido =======
-
 # ===================== Instalações =====================
+# (streamlit) skipped: !pip install python-docx bs4 lxml ipywidgets num2words pandas openpyxl pyproj --quiet
 
 # ===================== Imports =====================
-widgets = None  # ipywidgets shim via Streamlit
+import streamlit as st
+import streamlit as st  # widgets via Streamlit
 import re, os, io, time, math
 from bs4 import BeautifulSoup
 from docx import Document
@@ -117,16 +19,12 @@ from pyproj import CRS, Transformer  # (novo p/ conversões)
 from datetime import datetime
 
 # ===================== Google Drive / Imagens =====================
-from pathlib import Path
-import os
+drive.mount('/content/drive', force_remount=True)
+SHARED_DRIVE = "Memorial - Colab"  # ajuste se necessário
 
-# === Caminhos locais de imagens ===
-BASE_DIR = Path(__file__).resolve().parent
-ASSETS_DIR = BASE_DIR / "assets"
-
-TL_PATH = ASSETS_DIR / "marca_dagua_1.png"      # se quiser manter a marca d'água
-HEADER_LOGO_PATH = ASSETS_DIR / "logo_cabecalho.png"  # já existe conforme informado
-FOOTER_LOGO_PATH = ASSETS_DIR / "logo_rodape.png"     # opcional
+TL_PATH = str(Path("/tmp/drive/Shared drives", SHARED_DRIVE, "marca d'agua 1.png"))
+HEADER_LOGO_PATH = str(Path("/tmp/drive/Shared drives", SHARED_DRIVE, "logo cabecalho.png"))
+FOOTER_LOGO_PATH = str(Path("/tmp/drive/Shared drives", SHARED_DRIVE, "logo rodape.png"))
 
 # ===================== Utilidades numéricas / texto =====================
 def _fmt_br(v, casas=2):
@@ -559,43 +457,19 @@ def adicionar_texto_formatado(doc, texto):
         i = m.end()
 
 # ===================== Logos / doc base =====================
-# memorial_core.py
-from pathlib import Path
-import os
-from docx.shared import Inches
-from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
-
-# --- caminhos locais (sem Colab) ---
-BASE_DIR = Path(__file__).resolve().parent
-
-# tolera os dois jeitos de salvar o arquivo: "assets/logo_cabecalho.png" ou "assetslogo_cabecalho.png"
-CANDIDATES = [
-    BASE_DIR / "assets" / "logo_cabecalho.png",
-    BASE_DIR / "assetslogo_cabecalho.png",
-]
-HEADER_LOGO_PATH = next((str(p) for p in CANDIDATES if p.exists()), str(CANDIDATES[0]))
-
-# se não tiver marca d’água/rodapé, pode deixar None ou apontar depois
-TL_PATH = None
-FOOTER_LOGO_PATH = None
-
 def add_header_logo(doc, image_path, width_inches=1.4):
-    """Logo no cabeçalho, alinhado à esquerda, distância idêntica ao Colab."""
-    if not image_path or not os.path.exists(image_path):
-        return
+    if not os.path.exists(image_path): return
     for section in doc.sections:
-        section.header_distance = Inches(0.8)  # igual ao Colab
+        section.header_distance = Inches(0.8)
         p = section.header.paragraphs[0] if section.header.paragraphs else section.header.add_paragraph()
-        p.alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
-        run = p.add_run()
-        run.add_picture(image_path, width=Inches(width_inches))
+        r = p.add_run(); r.add_picture( "assetslogo_cabecalho.png" , width=Inches(width_inches))
 
 def add_footer_logo(doc, image_path, width_inches=1.6):
     if not os.path.exists(image_path): return
     for section in doc.sections:
         section.footer_distance = Inches(0.3)
         p = section.footer.add_paragraph(); p.alignment = WD_PARAGRAPH_ALIGNMENT.RIGHT
-        r = p.add_run(); r.add_picture(image_path, width=Inches(width_inches))
+        r = p.add_run(); r.add_picture( "assetslogo_cabecalho.png" , width=Inches(width_inches))
 
 def add_footer_left_text(doc, lines, size_pt=10):
     for section in doc.sections:
@@ -614,7 +488,7 @@ def add_page_numbers(document):
 def add_corner_image_watermark_cm(doc, image_path, width_cm=6.46, height_cm=1.91):
     if not os.path.exists(image_path): return
     sec = doc.sections[0]; para = sec.header.add_paragraph()
-    r = para.add_run(); r.add_picture(image_path, width=Cm(width_cm))
+    r = para.add_run(); r.add_picture( "assetslogo_cabecalho.png" , width=Cm(width_cm))
 
 def _apply_moderate_margins(doc):
     for section in doc.sections:
@@ -626,9 +500,9 @@ def _apply_moderate_margins(doc):
 def preparar_doc():
     doc = Document()
     _apply_moderate_margins(doc)
-    add_header_logo(doc, HEADER_LOGO_PATH, width_inches=1.4)  # mantém o 1.4"
-    add_corner_image_watermark_cm(doc, TL_PATH)               # opcional
-    add_footer_logo(doc, FOOTER_LOGO_PATH)                    # opcional
+    add_header_logo(doc, HEADER_LOGO_PATH)
+    add_corner_image_watermark_cm(doc, TL_PATH)
+    add_footer_logo(doc, FOOTER_LOGO_PATH)
     return doc
 
 # --- Força o Word a atualizar campos (TOC) ao abrir ---
@@ -1309,7 +1183,7 @@ def _sec_assinaturas_resumo(doc):
     r = p.add_run("CAU-RS 15335-4"); _set_run_defaults(r)
 
 # ===================== Widgets =====================
-tipo_emp = widgets.Dropdown(
+tipo_emp = st.Dropdown(
     description='Tipo:',
     options=[
         ('Memorial Condomínio', 'condominio'),
@@ -1323,57 +1197,57 @@ tipo_emp = widgets.Dropdown(
     value='condominio'
 )
 
-nome_emp = widgets.Text(description='Empreendimento:', placeholder='Ex.: Golden View')
-endereco_emp = widgets.Text(description='Endereço:', placeholder='Ex.: Av. Principal, 123')
-bairro_emp = widgets.Text(description='Bairro:', placeholder='Ex.: Centro')
-cidade_emp = widgets.Text(description='Cidade:', placeholder='Ex.: Portão/RS')
-area_total_emp = widgets.Text(description='Área total (m²):', placeholder='Ex.: 123456,78')
-perimetro_emp = widgets.Text(description='Perímetro (m):', placeholder='Ex.: 3456,78')
-matricula_emp = widgets.Text(description='Matrícula nº:', placeholder='Ex.: 12.345 ou 17.051, 17.052, 17.053')
-num_lotes_emp = widgets.IntText(description='Nº de lotes:', value=0)
-area_tot_priv_emp = widgets.Text(description='Área Privativa (m²):', placeholder='Ex.: 12345,67')
-area_tot_cond_emp = widgets.Text(description='Área Condominial (m²):', placeholder='Ex.: 2345,67')
+nome_emp = st.Text(description='Empreendimento:', placeholder='Ex.: Golden View')
+endereco_emp = st.Text(description='Endereço:', placeholder='Ex.: Av. Principal, 123')
+bairro_emp = st.Text(description='Bairro:', placeholder='Ex.: Centro')
+cidade_emp = st.Text(description='Cidade:', placeholder='Ex.: Portão/RS')
+area_total_emp = st.Text(description='Área total (m²):', placeholder='Ex.: 123456,78')
+perimetro_emp = st.Text(description='Perímetro (m):', placeholder='Ex.: 3456,78')
+matricula_emp = st.Text(description='Matrícula nº:', placeholder='Ex.: 12.345 ou 17.051, 17.052, 17.053')
+num_lotes_emp = st.IntText(description='Nº de lotes:', value=0)
+area_tot_priv_emp = st.Text(description='Área Privativa (m²):', placeholder='Ex.: 12345,67')
+area_tot_cond_emp = st.Text(description='Área Condominial (m²):', placeholder='Ex.: 2345,67')
 
-ane_drop = widgets.Dropdown(description='Área não edificante?', options=['Não','Sim'], value='Não')
-ane_largura = widgets.Text(description='Largura (m):', placeholder='Ex.: 3,00')
+ane_drop = st.Dropdown(description='Área não edificante?', options=['Não','Sim'], value='Não')
+ane_largura = st.Text(description='Largura (m):', placeholder='Ex.: 3,00')
 
 def _toggle_ane_fields(*args):
     ane_largura.layout.display = 'block' if ane_drop.value == 'Sim' else 'none'
 ane_drop.observe(_toggle_ane_fields, names='value'); _toggle_ane_fields()
 
-coord_fmt = widgets.Dropdown(
+coord_fmt = st.Dropdown(
     description='Coordenadas:',
     options=[('UTM','utm'),('Graus decimais','dec'),('Graus-Min-Seg','dms')],
     value='utm'
 )
 
-data_auto = widgets.Checkbox(
+data_auto = st.Checkbox(
     description='Preencher data automaticamente?',
     value=True,
-    layout=widgets.Layout(display='none')
+    layout=st.Layout(display='none')
 )
 
 # ====== NOVOS WIDGETS (Memorial Resumo) ======
-tipo_proj_resumo = widgets.Dropdown(
+tipo_proj_resumo = st.Dropdown(
     description='Tipo de empreendimento:',
     options=[('Condomínio','condominio'), ('Loteamento','loteamento')],
     value='condominio'
 )
-usos_multi = widgets.SelectMultiple(
+usos_multi = st.SelectMultiple(
     description='Usos:',
     options=['Residencial','Comercial','Industrial']
 )
-topografia = widgets.Dropdown(
+topografia = st.Dropdown(
     description='Topografia:',
     options=['Acentuada','Plana'],
     value='Acentuada'
 )
-has_ai = widgets.Checkbox(
+has_ai = st.Checkbox(
     description='Área Institucional',
     value=False,
     indent=False
 )
-has_restricao = widgets.Checkbox(
+has_restricao = st.Checkbox(
     description='Restrição',
     value=False,
     indent=False
@@ -1430,8 +1304,8 @@ def _pair(left_widget, right_widget):
 def on_upload_clicked(_):
     out.clear_output()
     with out:
-
-        sel = _colab_files_upload()
+        from google.colab import files
+        sel = files.upload()
         for nm, data in sel.items():
             uploaded_files[nm] = data
         if sel:
@@ -1563,14 +1437,14 @@ def _on_tipo_change(*args):
     form_box.children = rows
 
 # --- Botões ---
-btn_upload = widgets.Button(description="Anexar HTML(s)", button_style='info')
-btn_gerar  = widgets.Button(description="Gerar DOCX")
-btn_excel  = widgets.Button(description="Baixar Excel", button_style='success')
+btn_upload = st.Button(description="Anexar HTML(s)", button_style='info')
+btn_gerar  = st.Button(description="Gerar DOCX")
+btn_excel  = st.Button(description="Baixar Excel", button_style='success')
 btn_gerar.style.button_color  = '#1E88E5'
 btn_upload.style.button_color = '#00BCD4'
 btn_excel.style.button_color  = '#4CAF50'
 
-out = widgets.Output()
+out = st.empty()
 uploaded_files = {}
 _last_dados_quadro = []
 _last_eh_condominio = False
@@ -1590,7 +1464,7 @@ except:
 tipo_emp.observe(_on_tipo_change, names='value')
 
 _on_tipo_change(None)
-display(HTML("<h3>Gerar Memorial a partir do HTML/TXT (Civil 3D)</h3>"), form_box)
+st.write(HTML("<h3>Gerar Memorial a partir do HTML/TXT (Civil 3D)</h3>"), form_box)
 
 # ===================== Excel UNIF/DESM: helpers (única versão) =====================
 def _format_first_point(fp, coord_fmt, zone_num, hemi):
@@ -2459,7 +2333,7 @@ def _build_memorial_resumo_doc():
     ], size_pt=10)
     add_page_numbers(doc)
 
-    out_docx = "/content/URB-PL_XXXX_MEMORIAL RESUMO_RX-VX.docx"
+    out_docx = "/tmp/URB-PL_XXXX_MEMORIAL RESUMO_RX-VX.docx"
     doc.save(out_docx)
     return out_docx
 
@@ -2600,7 +2474,7 @@ def _build_solicitacao_analise_doc():
 
     # salvar arquivo
     cidade_nome = _cidade_sem_uf(cidade_emp.value)
-    out_docx = f"/content/URB-PL_XXXX_SOLICITAÇÃO DE ANÁLISE_RX-VX.docx"
+    out_docx = f"/tmp/URB-PL_XXXX_SOLICITAÇÃO DE ANÁLISE_RX-VX.docx"
     doc.save(out_docx)
     return out_docx
 
@@ -2608,7 +2482,7 @@ def on_upload_clicked(_):
     out.clear_output()
     with out:
         print("Selecione 1+ .html/.htm/.txt (quadras) e opcionalmente 1 'CivilReport'.")
-    up = _colab_files_upload()
+    up = files.upload()
     for fname, data in up.items():
         if fname.lower().endswith(('.html', '.htm', '.txt')):
             uploaded_files[fname] = data
@@ -2631,7 +2505,7 @@ def on_download_excel_clicked(_):
                 'Lote','Quadra','Área Privativa (m²)','Área Uso Comum (m²)','Área Real Total (m²)','Fração Ideal'
             ])
             cidade_nome = _cidade_sem_uf(cidade_emp.value)
-            xlsx_path = f"/content/URB-PL_XXXX_QUADRO FRAÇÃO IDEAL_RX_VX.xlsx"
+            xlsx_path = f"/tmp/URB-PL_XXXX_QUADRO FRAÇÃO IDEAL_RX_VX.xlsx"
             df['__quad_key__'] = df['Quadra'].map(lambda q: quadra_label_sort_key(f"QUADRA {q}"))
             df['__lote_key__'] = df['Lote'].map(_lote_num)
             df = df.sort_values(['__quad_key__','__lote_key__']).drop(columns=['__quad_key__','__lote_key__'])
@@ -2655,7 +2529,7 @@ def on_download_excel_clicked(_):
             ws.column_dimensions['D'].width = 22
             wb.save(xlsx_path)
             with out: print(f"📊 Excel de Fração Ideal: {xlsx_path}")
-            time.sleep(0.6); _colab_files_download(xlsx_path)
+            time.sleep(0.6); # Streamlit: use st.download_button to download file (handled below) # files.download(xlsx_path)
         except Exception as e:
             import traceback, sys
             with out:
@@ -2679,10 +2553,10 @@ def on_download_excel_clicked(_):
 
             prefixo = _prefixo_por_modo(tipo_emp.value)
             cidade_nome = _cidade_sem_uf(cidade_emp.value)
-            xlsx_path = f"/content/URB-PL_XXXX_VERTICES_RX-VX.xlsx"
+            xlsx_path = f"/tmp/URB-PL_XXXX_VERTICES_RX-VX.xlsx"
             _save_excel_unif_desm(unif_item, desm_items, xlsx_path, tipo_emp.value)
             with out: print(f"📊 Excel de Áreas (formato novo): {xlsx_path}")
-            time.sleep(0.6); _colab_files_download(xlsx_path)
+            time.sleep(0.6); # Streamlit: use st.download_button to download file (handled below) # files.download(xlsx_path)
         except Exception as e:
             import traceback, sys
             with out:
@@ -2702,14 +2576,14 @@ def on_generate_clicked(_):
         if modo == 'memorial_resumo':
             out_path = _build_memorial_resumo_doc()
             with out: print(f"✅ Gerado: {out_path}")
-            time.sleep(0.6); _colab_files_download(out_path)
+            time.sleep(0.6); # Streamlit: use st.download_button to download file (handled below) # files.download(out_path)
             return
 
         # >>> NOVO BLOCO <<<
         if modo == 'solicitacao_analise':
             out_path = _build_solicitacao_analise_doc()
             with out: print(f"✅ Gerado: {out_path}")
-            time.sleep(0.6); _colab_files_download(out_path)
+            time.sleep(0.6); # Streamlit: use st.download_button to download file (handled below) # files.download(out_path)
             return
 
         # UNIFICAÇÃO/DESMEMBRAMENTO
@@ -2738,10 +2612,10 @@ def on_generate_clicked(_):
 
             prefixo = _prefixo_por_modo(modo)
             cidade_nome = _cidade_sem_uf(cidade_emp.value)
-            out_docx = f"/content/URB-PL_XXXX-MEMORIAL_RX-VX.docx"
+            out_docx = f"/tmp/URB-PL_XXXX-MEMORIAL_RX-VX.docx"
             doc.save(out_docx)
             with out: print(f"✅ Gerado: {out_docx}")
-            time.sleep(0.6); _colab_files_download(out_docx)
+            time.sleep(0.6); # Streamlit: use st.download_button to download file (handled below) # files.download(out_docx)
             return
 
         # ---------- CONDOMÍNIO / LOTEAMENTO ----------
@@ -2998,10 +2872,10 @@ def on_generate_clicked(_):
         add_page_numbers(doc)
 
         cidade_nome = _cidade_sem_uf(cidade_emp.value)
-        out_docx = f"/content/URB-PL_XXXX_MEMORIAL DE LOTES_RX_VX.docx"
+        out_docx = f"/tmp/URB-PL_XXXX_MEMORIAL DE LOTES_RX_VX.docx"
         doc.save(out_docx)
         with out: print(f"✅ Gerado: {out_docx}")
-        time.sleep(0.6); _colab_files_download(out_docx)
+        time.sleep(0.6); # Streamlit: use st.download_button to download file (handled below) # files.download(out_docx)
 
     except Exception as e:
         import traceback, sys
@@ -3013,3 +2887,38 @@ def on_generate_clicked(_):
 btn_upload.on_click(on_upload_clicked)
 btn_gerar.on_click(on_generate_clicked)
 btn_excel.on_click(on_download_excel_clicked)
+
+
+# ===================== Streamlit Bootstrap =====================
+def _streamlit_bootstrap():
+    st.title("Memorial de Lotes - Gerador DOCX")
+    # Placeholders for outputs
+    out = st.empty()
+
+    # If original code defined buttons like btn_upload/btn_gerar/btn_excel with callbacks,
+    # we mirror them with Streamlit buttons calling the same functions if they exist.
+    # We assume existing functions: on_upload_clicked, on_generate_clicked, on_download_excel_clicked
+
+    if 'on_upload_clicked' in globals():
+        if st.button("Upload"):
+            try:
+                on_upload_clicked(None)
+            except Exception as e:
+                st.exception(e)
+
+    if 'on_generate_clicked' in globals():
+        if st.button("Gerar DOCX"):
+            try:
+                on_generate_clicked(None)
+            except Exception as e:
+                st.exception(e)
+
+    if 'on_download_excel_clicked' in globals():
+        if st.button("Baixar Excel"):
+            try:
+                on_download_excel_clicked(None)
+            except Exception as e:
+                st.exception(e)
+
+if __name__ == "__main__":
+    _streamlit_bootstrap()
