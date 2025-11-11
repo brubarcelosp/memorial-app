@@ -49,6 +49,16 @@ try:
 except ImportError:
     widgets = None
     HAS_IPYW = False
+
+# Detecta se está rodando no Google Colab e expõe files/drive
+try:
+    from google.colab import files, drive
+    IN_COLAB = True
+except ImportError:
+    files = None
+    drive = None
+    IN_COLAB = False
+
 # ===================== Google Drive / Imagens =====================
 SHARED_DRIVE = "Memorial - Colab"  # usado só no Colab
 
@@ -56,7 +66,7 @@ if IN_COLAB:
     drive.mount('/content/drive', force_remount=True)
     base_path = Path("/content/drive/Shared drives", SHARED_DRIVE)
 else:
-    # No Streamlit, use a pasta do projeto (mesmos nomes de arquivos que você mencionou)
+    # No Streamlit, usa a pasta do projeto
     base_path = Path(__file__).resolve().parent
 
 TL_PATH = str(base_path / "marca d'agua 1.png")
