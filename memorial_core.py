@@ -1,9 +1,8 @@
 # ===================== Imports =====================
-import re, os, io, time, math
+import os, re, io, time, math
 from pathlib import Path
 from datetime import datetime
 
-# Terceiros
 from bs4 import BeautifulSoup
 from docx import Document
 from docx.shared import Pt, RGBColor, Inches, Cm
@@ -14,23 +13,23 @@ from num2words import num2words
 import pandas as pd
 from pyproj import CRS, Transformer
 
-# IPython/display – opcional (apenas p/ Jupyter/Colab)
+# --- IPython/ipywidgets/Colab: opcionais (não quebram no Streamlit) ---
 try:
-    from IPython.display import display
+    from IPython.display import display  # só existe em Jupyter
 except Exception:
-    def display(*args, **kwargs):
+    def display(*args, **kwargs):  # no Streamlit não é usado
         return None
 
-# ipywidgets – opcional
 try:
-    import ipywidgets as widgets
+    import ipywidgets as widgets  # usado só no Jupyter
 except Exception:
-    class _WidgetsStub: pass
+    class _WidgetsStub: ...
     widgets = _WidgetsStub()
 
-# Colab – opcional
+# Não use Google Colab/Drive no Streamlit
+# (mantido só para não quebrar caso rode o mesmo código no Colab)
 try:
-    from google.colab import files, drive  # type: ignore
+    from google.colab import files, drive
     _IS_COLAB = True
 except Exception:
     files = None
@@ -40,17 +39,24 @@ except Exception:
     drive = _DummyDrive()
     _IS_COLAB = False
 
-# ===== Caminhos de arquivos/imagens =====
-SHARED_DRIVE = "Memorial - Colab"  # ajuste se necessário
-if _IS_COLAB:
-    drive.mount('/content/drive', force_remount=True)
-    base = Path("/content/drive/Shared drives") / SHARED_DRIVE
-else:
-    base = Path(".")  # diretório onde roda o Streamlit
+# ===================== Paths de assets =====================
+# Pasta do arquivo atual (funciona local e no Streamlit)
+BASE_DIR = Path(__file__).resolve().parent
 
-TL_PATH = str(base / "marca d'agua 1.png")
-HEADER_LOGO_PATH = str(base / "logo cabecalho.png")
-FOOTER_LOGO_PATH = str(base / "logo rodape.png")
+# Se quiser colocar num subdiretório, mude aqui (ex.: BASE_DIR / "assets")
+ASSETS_DIR = BASE_DIR
+
+# Nomes dos arquivos que você subiu no repo
+TL_PATH = str(ASSETS_DIR / "marca d'agua 1.png")
+HEADER_LOGO_PATH = str(ASSETS_DIR / "assetslogo_cabecalho.png")
+FOOTER_LOGO_PATH = str(ASSETS_DIR / "logo rodape.png")  # ajuste se existir
+
+# (opcional) garanta que inexistência do arquivo não quebre o app
+for _p in [TL_PATH, HEADER_LOGO_PATH, FOOTER_LOGO_PATH]:
+    if not Path(_p).exists():
+        # se sua lógica tolera ausência, apenas avise no log;
+        # se não, troque por outro caminho ou trate dentro das funções.
+        print(f"[aviso] arquivo não encontrado: {_p}")
 
 # ===================== Utilidades numéricas / texto =====================
 def _fmt_br(v, casas=2):
