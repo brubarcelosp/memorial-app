@@ -13,31 +13,55 @@ from num2words import num2words
 import pandas as pd
 from pyproj import CRS, Transformer
 
-# --- IPython/ipywidgets/Colab: opcionais (não quebram no Streamlit) ---
+# --------- IPython display (opcional) ----------
 try:
     from IPython.display import display  # só existe em Jupyter
 except Exception:
-    def display(*args, **kwargs):  # no Streamlit não é usado
+    def display(*args, **kwargs):
         return None
 
+# --------- ipywidgets (opcional) --------------
 try:
-    import ipywidgets as widgets  # usado só no Jupyter
+    import ipywidgets as widgets
+    _HAS_WIDGETS = True
 except Exception:
-    class _WidgetsStub: ...
+    _HAS_WIDGETS = False
+    # stub simples que imita widgets.* com .value e .observe
+    class _DummyWidget:
+        def __init__(self, value=None, **kwargs):
+            self.value = value
+        def observe(self, *args, **kwargs):
+            pass
+    class _WidgetsStub:
+        Dropdown = Text = Textarea = Checkbox = DatePicker = IntText = FloatText = Button = _DummyWidget
+        VBox = HBox = lambda *args, **kwargs: None
+        Layout = dict
     widgets = _WidgetsStub()
 
-# Não use Google Colab/Drive no Streamlit
-# (mantido só para não quebrar caso rode o mesmo código no Colab)
+# --------- Suporte Colab/Drive (opcional) -----
 try:
     from google.colab import files, drive
     _IS_COLAB = True
 except Exception:
     files = None
-    class _DummyDrive:
+    class _DriveDummy:
         @staticmethod
         def mount(*args, **kwargs): pass
-    drive = _DummyDrive()
+    drive = _DriveDummy()
     _IS_COLAB = False
+
+if _IS_COLAB:
+    drive.mount('/content/drive', force_remount=True)
+    BASE_DIR = Path("/content/drive/Shared drives") / "Memorial - Colab"
+else:
+    # no Streamlit, use a pasta do arquivo como base
+    BASE_DIR = Path(__file__).resolve().parent
+
+# --------- Caminhos de imagens usados no app ---
+# arquivos que estão no repositório
+HEADER_LOGO_PATH = str(BASE_DIR / "assetslogo_cabecalho.png")
+TL_PATH          = str(BASE_DIR / "marca d'agua 1.png")
+FOOTER_LOGO_PATH = str(BASE_DIR / "logo rodape.png")  # ajuste se existir no repo
 
 # ===================== Paths de assets =====================
 # Pasta do arquivo atual (funciona local e no Streamlit)
