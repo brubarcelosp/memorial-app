@@ -1,27 +1,56 @@
 # ===================== Imports =====================
-from IPython.display import display
-import ipywidgets as widgets
 import re, os, io, time, math
+from pathlib import Path
+from datetime import datetime
+
+# Terceiros
 from bs4 import BeautifulSoup
 from docx import Document
 from docx.shared import Pt, RGBColor, Inches, Cm
 from docx.enum.text import WD_PARAGRAPH_ALIGNMENT, WD_COLOR_INDEX, WD_LINE_SPACING
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-from google.colab import files, drive
-from pathlib import Path
 from num2words import num2words
-import pandas as pd  # (novo p/ Excel)
-from pyproj import CRS, Transformer  # (novo p/ conversões)
-from datetime import datetime
+import pandas as pd
+from pyproj import CRS, Transformer
 
-# ===================== Google Drive / Imagens =====================
-drive.mount('/content/drive', force_remount=True)
+# IPython/display – opcional (apenas p/ Jupyter/Colab)
+try:
+    from IPython.display import display
+except Exception:
+    def display(*args, **kwargs):
+        return None
+
+# ipywidgets – opcional
+try:
+    import ipywidgets as widgets
+except Exception:
+    class _WidgetsStub: pass
+    widgets = _WidgetsStub()
+
+# Colab – opcional
+try:
+    from google.colab import files, drive  # type: ignore
+    _IS_COLAB = True
+except Exception:
+    files = None
+    class _DummyDrive:
+        @staticmethod
+        def mount(*args, **kwargs): pass
+    drive = _DummyDrive()
+    _IS_COLAB = False
+
+# ===== Caminhos de arquivos/imagens =====
 SHARED_DRIVE = "Memorial - Colab"  # ajuste se necessário
+if _IS_COLAB:
+    drive.mount('/content/drive', force_remount=True)
+    base = Path("/content/drive/Shared drives") / SHARED_DRIVE
+else:
+    base = Path(".")  # diretório onde roda o Streamlit
 
-TL_PATH = str(Path("/content/drive/Shared drives", SHARED_DRIVE, "marca d'agua 1.png"))
-HEADER_LOGO_PATH = str(Path("/content/drive/Shared drives", SHARED_DRIVE, "logo cabecalho.png"))
-FOOTER_LOGO_PATH = str(Path("/content/drive/Shared drives", SHARED_DRIVE, "logo rodape.png"))
+TL_PATH = str(base / "marca d'agua 1.png")
+HEADER_LOGO_PATH = str(base / "logo cabecalho.png")
+FOOTER_LOGO_PATH = str(base / "logo rodape.png")
 
 # ===================== Utilidades numéricas / texto =====================
 def _fmt_br(v, casas=2):
