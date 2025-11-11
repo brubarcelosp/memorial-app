@@ -1,4 +1,119 @@
 
+# ===================== Streamlit Widgets Compatibility Layer =====================
+# Provides ipywidgets-like APIs on top of Streamlit so existing code (Dropdown, Text, etc.)
+# keeps working without deleting or rewriting business logic.
+import streamlit as st as _st_mod
+
+class _ValueBox:
+    def __init__(self, value):
+        self.value = value
+
+class _Button:
+    def __init__(self, description=None, **kwargs):
+        self.description = description or kwargs.get("description", "Button")
+        self._callback = None
+        self._clicked = _st_mod.button(self.description, key=kwargs.get("key"))
+        # If callback was set earlier in the same run, we trigger below in on_click()
+    def on_click(self, fn):
+        self._callback = fn
+        if self._clicked and callable(self._callback):
+            try:
+                self._callback(None)
+            except TypeError:
+                self._callback()
+
+def _dropdown(**kwargs):
+    label = kwargs.get("description", "") or kwargs.get("label", "")
+    options = kwargs.get("options", [])
+    if isinstance(options, dict):
+        # ipywidgets supports dict of label->value; mimic by showing keys and mapping back
+        labels = list(options.keys())
+        values = list(options.values())
+        index = values.index(kwargs.get("value")) if kwargs.get("value") in values else 0
+        sel_label = _st_mod.selectbox(label, labels, index=index, key=kwargs.get("key"))
+        return _ValueBox(options[sel_label])
+    else:
+        index = 0
+        if "value" in kwargs and kwargs["value"] in options:
+            try:
+                index = options.index(kwargs["value"])
+            except Exception:
+                index = 0
+        val = _st_mod.selectbox(label, options, index=index, key=kwargs.get("key"))
+        return _ValueBox(val)
+
+def _text(**kwargs):
+    label = kwargs.get("description","") or kwargs.get("label","")
+    val = _st_mod.text_input(label, value=kwargs.get("value",""), key=kwargs.get("key"))
+    return _ValueBox(val)
+
+def _textarea(**kwargs):
+    label = kwargs.get("description","") or kwargs.get("label","")
+    val = _st_mod.text_area(label, value=kwargs.get("value",""), key=kwargs.get("key"), height=kwargs.get("layout",{}).get("height"))
+    return _ValueBox(val)
+
+def _checkbox(**kwargs):
+    label = kwargs.get("description","") or kwargs.get("label","")
+    val = _st_mod.checkbox(label, value=kwargs.get("value", False), key=kwargs.get("key"))
+    return _ValueBox(val)
+
+def _inttext(**kwargs):
+    label = kwargs.get("description","") or kwargs.get("label","")
+    val = _st_mod.number_input(label, value=int(kwargs.get("value", 0) or 0), step=1, format="%d", key=kwargs.get("key"))
+    return _ValueBox(int(val))
+
+def _floattext(**kwargs):
+    label = kwargs.get("description","") or kwargs.get("label","")
+    val = _st_mod.number_input(label, value=float(kwargs.get("value", 0.0) or 0.0), key=kwargs.get("key"))
+    return _ValueBox(float(val))
+
+def _fileupload(**kwargs):
+    label = kwargs.get("description","") or kwargs.get("label","")
+    accept = kwargs.get("accept", None)
+    if isinstance(accept, (list, tuple)):
+        accept = list(accept)
+    uploaded = _st_mod.file_uploader(label, type=accept, key=kwargs.get("key"))
+    # ipywidgets .value is a bytes-like; here, return the UploadedFile object directly
+    return _ValueBox(uploaded)
+
+def _output(**kwargs):
+    return _st_mod.empty()
+
+def _vbox(children=None, **kwargs):
+    cont = _st_mod.container()
+    if children:
+        for ch in children:
+            try:
+                cont.write(ch)
+            except Exception:
+                pass
+    return cont
+
+def _hbox(children=None, **kwargs):
+    cols = _st_mod.columns(len(children) if children else 1)
+    if children:
+        for col, ch in zip(cols, children):
+            with col:
+                try:
+                    _st_mod.write(ch)
+                except Exception:
+                    pass
+    return cols
+
+# Expose shims on the streamlit module so existing 'st.Dropdown(...)' etc. calls work
+setattr(_st_mod, "Dropdown", lambda *a, **k: _dropdown(**k))
+setattr(_st_mod, "Text",    lambda *a, **k: _text(**k))
+setattr(_st_mod, "Textarea",lambda *a, **k: _textarea(**k))
+setattr(_st_mod, "Checkbox",lambda *a, **k: _checkbox(**k))
+setattr(_st_mod, "IntText", lambda *a, **k: _inttext(**k))
+setattr(_st_mod, "FloatText", lambda *a, **k: _floattext(**k))
+setattr(_st_mod, "FileUpload", lambda *a, **k: _fileupload(**k))
+setattr(_st_mod, "Output",  lambda *a, **k: _output(**k))
+setattr(_st_mod, "VBox",    lambda *a, **k: _vbox(**k))
+setattr(_st_mod, "HBox",    lambda *a, **k: _hbox(**k))
+setattr(_st_mod, "Button",  _Button)
+# =============================================================================
+
 # ========== Colab Drive Shim (Streamlit-safe) ==========
 try:
     from google.colab import drive  # type: ignore
