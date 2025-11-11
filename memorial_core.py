@@ -1,3 +1,14 @@
+
+# ========== Colab Drive Shim (Streamlit-safe) ==========
+try:
+    from google.colab import drive  # type: ignore
+except Exception:  # not in Colab
+    class _DriveShim:
+        def mount(self, *args, **kwargs):
+            # No-op in Streamlit/other environments
+            pass
+    drive = _DriveShim()
+# =======================================================
 # ===================== Instalações =====================
 # (streamlit) skipped: !pip install python-docx bs4 lxml ipywidgets num2words pandas openpyxl pyproj --quiet
 
