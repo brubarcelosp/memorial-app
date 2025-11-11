@@ -30,7 +30,11 @@ from pyproj import CRS, Transformer  # (novo p/ conversões)
 from datetime import datetime
 
 # ===================== Google Drive / Imagens =====================
-drive.mount('/content/drive', force_remount=True)
+try:
+    drive.mount('/content/drive', force_remount=True)
+except Exception:
+    # Non-Colab or already mounted: ignore in Streamlit
+    pass
 SHARED_DRIVE = "Memorial - Colab"  # ajuste se necessário
 
 TL_PATH = str(Path("/tmp/drive/Shared drives", SHARED_DRIVE, "marca d'agua 1.png"))
