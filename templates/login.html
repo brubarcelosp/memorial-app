@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Gerador de Memorial Descritivo</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .login-container {
+            max-width: 400px;
+            margin: 100px auto;
+            padding: 40px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            text-align: center;
+        }
+        .login-container h1 {
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+        .login-container p {
+            color: #666;
+            margin-bottom: 30px;
+        }
+        .google-btn {
+            width: 100%;
+            padding: 12px 24px;
+            background: #4285f4;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            transition: background 0.3s;
+        }
+        .google-btn:hover {
+            background: #357ae8;
+        }
+        .google-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .error-message {
+            margin-top: 20px;
+            padding: 12px;
+            background: #f8d7da;
+            color: #721c24;
+            border-radius: 6px;
+            display: none;
+        }
+        .error-message.show {
+            display: block;
+        }
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <h1>🔐 Login</h1>
+        <p>Gerador de Memorial Descritivo</p>
+        <p style="font-size: 0.9em; color: #999;">Acesso restrito a @solido.arq.br</p>
+        
+        <div id="googleLoginBtn"></div>
+        
+        <div id="errorMessage" class="error-message"></div>
+    </div>
+
+    <!-- Google Identity Services -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script>
+        let googleClientId = '{{ google_client_id|safe }}';
+        
+        // Aguardar o carregamento do Google Identity Services
+        window.onload = function() {
+            if (!googleClientId || googleClientId === '') {
+                document.getElementById('googleLoginBtn').disabled = true;
+                mostrarErro('Google Client ID não configurado. Configure a variável de ambiente GOOGLE_CLIENT_ID.');
+                return;
+            }
+            
+            // Inicializar Google Sign-In
+            google.accounts.id.initialize({
+                client_id: googleClientId,
+                callback: handleCredentialResponse
+            });
+            
+            // Renderizar o botão do Google
+            google.accounts.id.renderButton(
+                document.getElementById('googleLoginBtn'),
+                {
+                    theme: 'filled_blue',
+                    size: 'large',
+                    width: '100%',
+                    text: 'signin_with',
+                    locale: 'pt-BR'
+                }
+            );
+        };
+        
+        function handleCredentialResponse(response) {
+            const token = response.credential;
+            
+            // Desabilitar botão
+            const btn = document.getElementById('googleLoginBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="loading"></span> Autenticando...';
+            
+            // Enviar token para o servidor
+            fetch('/api/auth/google', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ token: token })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Redirecionar para a página principal
+                    window.location.href = '/';
+                } else {
+                    mostrarErro(data.error || 'Erro ao fazer login');
+                    // Recarregar a página para resetar o botão
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 2000);
+                }
+            })
+            .catch(error => {
+                mostrarErro('Erro ao comunicar com o servidor: ' + error.message);
+                setTimeout(() => {
+                    window.location.reload();
+                }, 2000);
+            });
+        }
+        
+        function mostrarErro(mensagem) {
+            const errorDiv = document.getElementById('errorMessage');
+            errorDiv.textContent = mensagem;
+            errorDiv.classList.add('show');
+        }
+    </script>
+</body>
+</html>
+

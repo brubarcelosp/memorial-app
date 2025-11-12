@@ -9,8 +9,26 @@
 <body>
     <div class="container">
         <header>
-            <h1>📄 Gerador de Memorial Descritivo</h1>
-            <p class="subtitle">Sistema para geração automática de documentos de parcelamento</p>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <h1>📄 Gerador de Memorial Descritivo</h1>
+                    <p class="subtitle">Sistema para geração automática de documentos de parcelamento</p>
+                </div>
+                <div style="text-align: right;">
+                    {% if usuario %}
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        {% if usuario.foto_url %}
+                        <img src="{{ usuario.foto_url }}" alt="Foto" style="width: 40px; height: 40px; border-radius: 50%;">
+                        {% endif %}
+                        <div>
+                            <div style="font-weight: 600; color: white;">{{ usuario.nome }}</div>
+                            <div style="font-size: 0.85em; color: rgba(255,255,255,0.8);">{{ usuario.email }}</div>
+                        </div>
+                        <a href="{{ url_for('logout') }}" style="margin-left: 15px; padding: 8px 16px; background: rgba(255,255,255,0.2); color: white; text-decoration: none; border-radius: 6px; font-size: 0.9em;">Sair</a>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
         </header>
 
         <main>

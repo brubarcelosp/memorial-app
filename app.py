@@ -1,4 +1,5 @@
-from flask import Flask, render_template, request, send_file, jsonify, session
+from flask import Flask, render_template, request, send_file, jsonify, session, flash, redirect, url_for
+from flask_login import login_required, current_user, logout_user, login_user
 import os
 import io
 import re
@@ -15,10 +16,19 @@ from memorial_processor import (
     build_excel_fracao_ideal_web, build_excel_vertices_web
 )
 
+# Importar módulo de autenticação
+from auth import (
+    configurar_login_manager, verificar_email_permitido, 
+    verificar_token_google, Usuario
+)
+
 app = Flask(__name__)
-app.secret_key = 'your-secret-key-change-this-in-production'
+app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-change-this-in-production')
 app.config['UPLOAD_FOLDER'] = tempfile.mkdtemp()
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max file size
+
+# Configurar autenticação
+login_manager = configurar_login_manager(app)
 
 # Criar diretórios necessários
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -26,10 +36,84 @@ os.makedirs('static/uploads', exist_ok=True)
 os.makedirs('static/images', exist_ok=True)
 
 @app.route('/')
+@login_required
 def index():
-    return render_template('index.html')
+    return render_template('index.html', usuario=current_user)
+
+@app.route('/login')
+def login():
+    """Página de login"""
+    if current_user.is_authenticated:
+        return redirect(url_for('index'))
+    google_client_id = os.environ.get('GOOGLE_CLIENT_ID', '')
+    return render_template('login.html', google_client_id=google_client_id)
+
+@app.route('/api/auth/google', methods=['POST'])
+def autenticar_google():
+    """Endpoint para autenticação com Google"""
+    try:
+        dados = request.get_json()
+        token = dados.get('token')
+        
+        if not token:
+            return jsonify({'error': 'Token não fornecido'}), 400
+        
+        # Verificar token do Google
+        info_usuario = verificar_token_google(token)
+        
+        if not info_usuario:
+            return jsonify({'error': 'Token inválido'}), 401
+        
+        email = info_usuario['email']
+        
+        # Verificar se o email é permitido
+        if not verificar_email_permitido(email):
+            return jsonify({
+                'error': 'Acesso negado. Apenas emails @solido.arq.br e paulo.vicente001@gmail.com são permitidos.'
+            }), 403
+        
+        # Criar usuário e fazer login
+        usuario = Usuario(
+            email=email,
+            nome=info_usuario['nome'],
+            foto_url=info_usuario.get('foto_url')
+        )
+        
+        # Armazenar na sessão
+        session['user_email'] = email
+        session['user_name'] = info_usuario['nome']
+        if info_usuario.get('foto_url'):
+            session['user_picture'] = info_usuario['foto_url']
+        
+        login_user(usuario, remember=True)
+        
+        return jsonify({
+            'success': True,
+            'user': {
+                'email': email,
+                'nome': info_usuario['nome'],
+                'foto_url': info_usuario.get('foto_url')
+            }
+        })
+    
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500
+
+@app.route('/logout')
+@login_required
+def logout():
+    """Fazer logout"""
+    logout_user()
+    session.clear()
+    flash('Você foi desconectado com sucesso.', 'info')
+    return redirect(url_for('login'))
 
 @app.route('/api/upload', methods=['POST'])
+@login_required
 def enviar_arquivos():
     """Endpoint para upload de arquivos"""
     if 'files' not in request.files:
@@ -68,6 +152,7 @@ def arquivo_imagem_permitido(nome_arquivo):
            nome_arquivo.rsplit('.', 1)[1].lower() in ['png', 'jpg', 'jpeg', 'gif', 'bmp']
 
 @app.route('/api/upload-image', methods=['POST'])
+@login_required
 def enviar_imagem():
     """Endpoint para upload de imagens (marca d'água, logos, etc.)"""
     if 'file' not in request.files:
@@ -108,6 +193,7 @@ def enviar_imagem():
     return jsonify({'error': 'Tipo de arquivo não permitido. Use PNG, JPG, JPEG, GIF ou BMP'}), 400
 
 @app.route('/api/generate', methods=['POST'])
+@login_required
 def gerar_documento():
     """Endpoint principal para gerar documentos"""
     try:
@@ -218,6 +304,7 @@ def gerar_documento():
         }), 500
 
 @app.route('/api/download/<filename>')
+@login_required
 def baixar_arquivo(nome_arquivo):
     """Endpoint para download de arquivos gerados"""
     # Buscar o arquivo no diretório de uploads
@@ -248,6 +335,7 @@ def baixar_arquivo(nome_arquivo):
     )
 
 @app.route('/api/generate-excel', methods=['POST'])
+@login_required
 def gerar_excel():
     """Endpoint para gerar planilhas Excel"""
     try:
