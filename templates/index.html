@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gerador de Memorial Descritivo</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <h1>📄 Gerador de Memorial Descritivo</h1>
+                    <p class="subtitle">Sistema para geração automática de documentos de parcelamento</p>
+                </div>
+                <div style="text-align: right;">
+                    {% if usuario %}
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        {% if usuario.foto_url %}
+                        <img src="{{ usuario.foto_url }}" alt="Foto" style="width: 40px; height: 40px; border-radius: 50%;">
+                        {% endif %}
+                        <div>
+                            <div style="font-weight: 600; color: white;">{{ usuario.nome }}</div>
+                            <div style="font-size: 0.85em; color: rgba(255,255,255,0.8);">{{ usuario.email }}</div>
+                        </div>
+                        <a href="{{ url_for('logout') }}" style="margin-left: 15px; padding: 8px 16px; background: rgba(255,255,255,0.2); color: white; text-decoration: none; border-radius: 6px; font-size: 0.9em;">Sair</a>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </header>
+
+        <main>
+            <form id="memorialForm">
+                <!-- Tipo de Memorial -->
+                <div class="form-section">
+                    <h2>1. Tipo de Documento</h2>
+                    <div class="form-group">
+                        <label for="tipo_emp">Tipo de Memorial:</label>
+                        <select id="tipo_emp" name="tipo_emp" required>
+                            <option value="condominio">Memorial Condomínio</option>
+                            <option value="loteamento">Memorial Loteamento</option>
+                            <option value="unificacao">Memorial Unificação</option>
+                            <option value="desmembramento">Memorial Desmembramento</option>
+                            <option value="unif_desm">Memorial Unificação e Desmembramento</option>
+                            <option value="memorial_resumo">Memorial Resumo</option>
+                            <option value="solicitacao_analise">Solicitação de Análise</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Dados Básicos -->
+                <div class="form-section">
+                    <h2>2. Dados do Empreendimento</h2>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="nome_emp">Nome do Empreendimento:</label>
+                            <input type="text" id="nome_emp" name="nome_emp" placeholder="Ex.: Golden View">
+                        </div>
+                        <div class="form-group">
+                            <label for="endereco_emp">Endereço:</label>
+                            <input type="text" id="endereco_emp" name="endereco_emp" placeholder="Ex.: Av. Principal, 123">
+                        </div>
+                        <div class="form-group">
+                            <label for="bairro_emp">Bairro:</label>
+                            <input type="text" id="bairro_emp" name="bairro_emp" placeholder="Ex.: Centro">
+                        </div>
+                        <div class="form-group">
+                            <label for="cidade_emp">Cidade/UF:</label>
+                            <input type="text" id="cidade_emp" name="cidade_emp" placeholder="Ex.: Portão/RS">
+                        </div>
+                        <div class="form-group">
+                            <label for="area_total_emp">Área Total (m²):</label>
+                            <input type="text" id="area_total_emp" name="area_total_emp" placeholder="Ex.: 123456,78">
+                        </div>
+                        <div class="form-group">
+                            <label for="perimetro_emp">Perímetro (m):</label>
+                            <input type="text" id="perimetro_emp" name="perimetro_emp" placeholder="Ex.: 3456,78">
+                        </div>
+                        <div class="form-group">
+                            <label for="matricula_emp">Matrícula nº:</label>
+                            <input type="text" id="matricula_emp" name="matricula_emp" placeholder="Ex.: 12.345 ou 17.051, 17.052">
+                        </div>
+                        <div class="form-group">
+                            <label for="num_lotes_emp">Nº de Lotes:</label>
+                            <input type="number" id="num_lotes_emp" name="num_lotes_emp" value="0" min="0">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Campos Condicionais para Condomínio -->
+                <div class="form-section" id="condominio_fields" style="display: none;">
+                    <h2>3. Dados do Condomínio</h2>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="area_tot_priv_emp">Área Privativa (m²):</label>
+                            <input type="text" id="area_tot_priv_emp" name="area_tot_priv_emp" placeholder="Ex.: 12345,67">
+                        </div>
+                        <div class="form-group">
+                            <label for="area_tot_cond_emp">Área Condominial (m²):</label>
+                            <input type="text" id="area_tot_cond_emp" name="area_tot_cond_emp" placeholder="Ex.: 2345,67">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Campos Condicionais para Memorial Resumo -->
+                <div class="form-section" id="resumo_fields" style="display: none;">
+                    <h2>3. Dados Adicionais (Memorial Resumo)</h2>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="tipo_proj_resumo">Tipo de Empreendimento:</label>
+                            <select id="tipo_proj_resumo" name="tipo_proj_resumo">
+                                <option value="condominio">Condomínio</option>
+                                <option value="loteamento">Loteamento</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="usos_multi">Usos (selecione múltiplos):</label>
+                            <select id="usos_multi" name="usos_multi" multiple>
+                                <option value="Residencial">Residencial</option>
+                                <option value="Comercial">Comercial</option>
+                                <option value="Industrial">Industrial</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="topografia">Topografia:</label>
+                            <select id="topografia" name="topografia">
+                                <option value="Acentuada">Acentuada</option>
+                                <option value="Plana">Plana</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="has_ai" name="has_ai" value="true">
+                                Área Institucional
+                            </label>
+                        </div>
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="has_restricao" name="has_restricao" value="true">
+                                Restrição
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Área Não Edificante -->
+                <div class="form-section" id="ane_fields">
+                    <h2>4. Área Não Edificante</h2>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="ane_drop">Área não edificante?</label>
+                            <select id="ane_drop" name="ane_drop">
+                                <option value="Não">Não</option>
+                                <option value="Sim">Sim</option>
+                            </select>
+                        </div>
+                        <div class="form-group" id="ane_largura_group" style="display: none;">
+                            <label for="ane_largura">Largura (m):</label>
+                            <input type="text" id="ane_largura" name="ane_largura" placeholder="Ex.: 3,00">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Coordenadas -->
+                <div class="form-section" id="coord_fields">
+                    <h2>5. Sistema de Coordenadas</h2>
+                    <div class="form-group">
+                        <label for="coord_fmt">Formato de Coordenadas:</label>
+                        <select id="coord_fmt" name="coord_fmt">
+                            <option value="utm">UTM</option>
+                            <option value="dec">Graus Decimais</option>
+                            <option value="dms">Graus-Minutos-Segundos</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Upload de Arquivos -->
+                <div class="form-section" id="upload_section">
+                    <h2>6. Upload de Arquivos</h2>
+                    <div class="form-group">
+                        <label for="file_upload">Arquivos HTML/TXT (quadras e CivilReport):</label>
+                        <input type="file" id="file_upload" name="files" multiple accept=".html,.htm,.txt">
+                        <small>Selecione arquivos HTML/TXT das quadras e opcionalmente um CivilReport</small>
+                    </div>
+                    <div id="upload_status" class="upload-status"></div>
+                </div>
+
+                <!-- Botões de Ação -->
+                <div class="form-actions">
+                    <button type="button" id="btn_upload" class="btn btn-info">📎 Anexar Arquivos</button>
+                    <button type="submit" id="btn_gerar" class="btn btn-primary">📄 Gerar DOCX</button>
+                    <button type="button" id="btn_excel" class="btn btn-success" style="display: none;">📊 Baixar Excel</button>
+                </div>
+
+                <!-- Mensagens -->
+                <div id="messages" class="messages"></div>
+            </form>
+        </main>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
+
+
+
